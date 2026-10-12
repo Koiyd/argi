@@ -4,7 +4,7 @@
 
 ## Thank you for contributing to ARGI!
 
-Since its open-source inception, ARGI has received attention from many community members. Every Issue and PR from the community helps the entire project and contributes to building a better Spring AI.
+Since its open-source inception, ARGI has received attention from many community members. Every Issue and PR from the community helps the entire project and contributes to building a better ARGI.
 
 We sincerely thank the developers who have submitted Issues and PRs for this project. We hope more community developers will join us to make this project even better.
 

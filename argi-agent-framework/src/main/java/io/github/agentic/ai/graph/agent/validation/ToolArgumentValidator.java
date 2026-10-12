@@ -24,11 +24,11 @@ import java.util.Optional;
 
 /**
  * Validates tool-call arguments against the tool's declared input schema before the
- * arguments reach the {@code ToolCallback}.
+ * arguments reach the {@link io.github.agentic.ai.api.tool.Tool}.
  *
  * <p>
- * Deliberately a small, closed-rule validator rather than a full JSON Schema engine:
- * JSON parse, {@code required}, {@code type}, {@code enum}, numeric
+ * Deliberately a small, closed-rule validator rather than a full JSON Schema engine: JSON
+ * parse, {@code required}, {@code type}, {@code enum}, numeric
  * {@code minimum}/{@code maximum} range, {@code additionalProperties: false} and
  * {@code null} type handling. It never loads external resources: {@code $ref} nodes are
  * skipped (bounded local expansion is future work), so remote references cannot be
@@ -36,8 +36,8 @@ import java.util.Optional;
  * </p>
  *
  * <p>
- * Failure messages and field paths are safe to surface: they identify the offending
- * field path and error code but never include argument values.
+ * Failure messages and field paths are safe to surface: they identify the offending field
+ * path and error code but never include argument values.
  * </p>
  */
 public final class ToolArgumentValidator {
@@ -50,6 +50,7 @@ public final class ToolArgumentValidator {
 	/**
 	 * A validation failure with a machine-readable error code, the JSON-path-like field
 	 * path of the offending value, and a value-free human-readable message.
+	 *
 	 * @param errorCode machine-readable error code (e.g. {@code INVALID_JSON})
 	 * @param fieldPath path of the offending field, e.g. {@code $.user.name}
 	 * @param message human-readable message that never contains argument values
@@ -75,8 +76,8 @@ public final class ToolArgumentValidator {
 						"tool input schema is not valid JSON"));
 			}
 			if (!schema.isObject()) {
-				return Optional.of(
-						new ToolArgumentValidationFailure("SCHEMA_MALFORMED", "$", "tool input schema is not an object"));
+				return Optional.of(new ToolArgumentValidationFailure("SCHEMA_MALFORMED", "$",
+						"tool input schema is not an object"));
 			}
 		}
 
@@ -90,14 +91,14 @@ public final class ToolArgumentValidator {
 				args = MAPPER.readTree(trimmed);
 			}
 			catch (JsonProcessingException e) {
-				return Optional.of(new ToolArgumentValidationFailure("INVALID_JSON", "$",
-						"tool arguments are not valid JSON"));
+				return Optional
+					.of(new ToolArgumentValidationFailure("INVALID_JSON", "$", "tool arguments are not valid JSON"));
 			}
 		}
 
 		if (!args.isObject()) {
-			return Optional.of(
-					new ToolArgumentValidationFailure("INVALID_TYPE", "$", "tool arguments must be a JSON object"));
+			return Optional
+				.of(new ToolArgumentValidationFailure("INVALID_TYPE", "$", "tool arguments must be a JSON object"));
 		}
 
 		if (schema == null) {
@@ -106,7 +107,8 @@ public final class ToolArgumentValidator {
 		return validateObject(args, schema, "$");
 	}
 
-	private static Optional<ToolArgumentValidationFailure> validateObject(JsonNode value, JsonNode schema, String path) {
+	private static Optional<ToolArgumentValidationFailure> validateObject(JsonNode value, JsonNode schema,
+			String path) {
 		if (schema.has("$ref")) {
 			// $ref resolution is intentionally out of scope for the initial gate
 			return Optional.empty();
@@ -137,7 +139,8 @@ public final class ToolArgumentValidator {
 					}
 					continue;
 				}
-				Optional<ToolArgumentValidationFailure> failure = validateValue(value.get(key), propertySchema, childPath);
+				Optional<ToolArgumentValidationFailure> failure = validateValue(value.get(key), propertySchema,
+						childPath);
 				if (failure.isPresent()) {
 					return failure;
 				}
@@ -157,8 +160,8 @@ public final class ToolArgumentValidator {
 
 		JsonNode typeNode = schema.path("type");
 		if (!typeNode.isMissingNode() && !matchesType(value, typeNode)) {
-			return Optional.of(new ToolArgumentValidationFailure("INVALID_TYPE", path,
-					"value does not match the declared type"));
+			return Optional
+				.of(new ToolArgumentValidationFailure("INVALID_TYPE", path, "value does not match the declared type"));
 		}
 
 		JsonNode enumNode = schema.path("enum");
@@ -189,7 +192,8 @@ public final class ToolArgumentValidator {
 			}
 		}
 
-		if (value.isObject() && (schema.path("properties").isObject() || isProhibited(schema.path("additionalProperties")))) {
+		if (value.isObject()
+				&& (schema.path("properties").isObject() || isProhibited(schema.path("additionalProperties")))) {
 			return validateObject(value, schema, path);
 		}
 

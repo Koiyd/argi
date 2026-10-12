@@ -25,6 +25,20 @@ build: ## Build the project
 	@$(LOG_TARGET)
 	./mvnw -B package --file pom.xml -DskipTests=true
 
+.PHONY: dependency-audit
+dependency-audit: ## Audit resolved runtime dependencies for high and critical advisories
+	@$(LOG_TARGET)
+	./mvnw -B -DskipTests=true package org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree -Dscope=runtime -DoutputType=json -DoutputFile=target/runtime-dependencies.json
+	python3 -B tools/tests/runtime-dependency-audit-test.py
+	python3 -B tools/scripts/audit-runtime-dependencies.py
+
+.PHONY: sdk-boundaries-check
+sdk-boundaries-check: ## Check production source, bytecode, and resolved SDK boundaries
+	@$(LOG_TARGET)
+	./mvnw -B -DskipTests=true package org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree -Dscope=runtime -DoutputType=json -DoutputFile=target/runtime-dependencies.json
+	python3 -B tools/tests/sdk-boundaries-test.py
+	python3 -B tools/scripts/check-sdk-boundaries.py
+
 .PHONY: format-fix
 format-fix: ## Format the code
 	@$(LOG_TARGET)
@@ -45,23 +59,7 @@ checkstyle-check: ## Checkstyle Check the code and output to target/checkstyle-r
 	@$(LOG_TARGET)
 	./mvnw -Dcheckstyle.skip=false -Dcheckstyle.output.file=checkstyle-report.xml checkstyle:check
 
-.PHONY: compatibility-wiring-check
-compatibility-wiring-check:
+.PHONY: api-contract-check
+api-contract-check: ## Compile current public API consumers without provider SDKs
 	@$(LOG_TARGET)
-	tools/scripts/verify-compatibility-wiring.sh
-
-.PHONY: binary-compatibility-check
-binary-compatibility-check: ## Compare public and protected APIs against the ARGI baseline
-	@$(LOG_TARGET)
-	tools/scripts/verify-core-binary-compatibility.sh
-
-.PHONY: source-compatibility-check
-source-compatibility-check:
-	@$(LOG_TARGET)
-	tools/scripts/verify-core-source-compatibility.sh
-
-.PHONY: compatibility-check
-compatibility-check:
-	$(MAKE) compatibility-wiring-check
-	$(MAKE) binary-compatibility-check
-	$(MAKE) source-compatibility-check
+	tools/scripts/verify-api-contract.sh

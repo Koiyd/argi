@@ -44,7 +44,9 @@ import static java.util.Optional.ofNullable;
 public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder> {
 
 	public static final String AGENT_MODEL_NAME = "_AGENT_MODEL_";
+
 	public static final String AGENT_TOOL_NAME = "_AGENT_TOOL_";
+
 	public static final String AGENT_HOOK_NAME_PREFIX = "_AGENT_HOOK_";
 
 	public static final String AGENT_NAME_KEY = "_AGENT_";
@@ -52,22 +54,20 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 	public static final String HUMAN_FEEDBACK_METADATA_KEY = "HUMAN_FEEDBACK";
 
 	public static final String STATE_UPDATE_METADATA_KEY = "STATE_UPDATE";
+
 	public static final String APP_NAME_METADATA_KEY = "app_name";
+
 	public static final String USER_ID_METADATA_KEY = "user_id";
+
 	public static final String DEFAULT_PARALLEL_EXECUTOR_KEY = "_DEFAULT_PARALLEL_EXECUTOR_";
+
 	public static final String DEFAULT_PARALLEL_AGGREGATION_STRATEGY_KEY = "_DEFAULT_PARALLEL_AGGREGATION_STRATEGY_";
 
 	/**
-	 * Metadata key for dynamic tool callbacks ({@code List<org.springframework.ai.tool.ToolCallback>}).
-	 * Used internally by AgentLlmNode and AgentToolNode during ReactAgent inference (e.g. when
-	 * ModelInterceptor adds tools via dynamicToolCallbacks). Not part of the public API.
-	 */
-	public static final String DYNAMIC_TOOL_CALLBACKS_METADATA_KEY = "_DYNAMIC_TOOL_CALLBACKS_";
-
-	/**
 	 * Metadata key for enabling merge of reasoning content in streamed assistant message
-	 * metadata. When set to {@link Boolean#TRUE}, last and current chunk metadata (including
-	 * reasoning content) are merged; otherwise only current message metadata is used.
+	 * metadata. When set to {@link Boolean#TRUE}, last and current chunk metadata
+	 * (including reasoning content) are merged; otherwise only current message metadata
+	 * is used.
 	 */
 	public static final String MERGE_REASONING_CONTENT_METADATA_KEY = "_MERGE_REASONING_CONTENT_";
 
@@ -79,12 +79,14 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 	private final CompiledGraph.StreamMode streamMode;
 
-	// Metadata is immutable during execution, it is used for environment information provided for a specific run.
+	// Metadata is immutable during execution, it is used for environment information
+	// provided for a specific run.
 	private final Map<String, Object> metadata;
 
 	/**
-	 * Comparing to metadata, context is mutable during execution. It passes information between nodes.
-	 * Different from OverAllState, context is specific to a run, it will not be persisted.
+	 * Comparing to metadata, context is mutable during execution. It passes information
+	 * between nodes. Different from OverAllState, context is specific to a run, it will
+	 * not be persisted.
 	 */
 	private final ConcurrentMap<String, Object> context;
 
@@ -247,9 +249,7 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 	 * @return a new RunnableConfig with human feedback placeholder metadata
 	 */
 	public RunnableConfig withResume() {
-		return RunnableConfig.builder(this)
-				.addMetadata(HUMAN_FEEDBACK_METADATA_KEY, "placeholder")
-				.build();
+		return RunnableConfig.builder(this).addMetadata(HUMAN_FEEDBACK_METADATA_KEY, "placeholder").build();
 	}
 
 	/**
@@ -286,7 +286,6 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 		return ofNullable(interruptedNodes).map(m -> m.get(key));
 	}
 
-
 	// FIXME, allow modification or not?
 	@Override
 	public Optional<Map<String, Object>> metadata() {
@@ -313,7 +312,6 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 		}
 		return ofNullable(metadata).map(m -> m.get(key));
 	}
-
 
 	@Override
 	public String toString() {
@@ -432,8 +430,8 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 		/**
 		 * Adds resume metadata ({@link #HUMAN_FEEDBACK_METADATA_KEY} with value
-		 * {@code "placeholder"}) so the built config is suitable for resuming a run
-		 * (e.g. after human feedback). Equivalent to building and then calling
+		 * {@code "placeholder"}) so the built config is suitable for resuming a run (e.g.
+		 * after human feedback). Equivalent to building and then calling
 		 * {@link RunnableConfig#withResume()}, but allows fluent builder usage.
 		 * @return this builder for chaining
 		 */
@@ -443,8 +441,9 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 		/**
 		 * Enables or disables merging of reasoning content in streamed assistant message
-		 * metadata across chunks. When enabled, last and current chunk metadata (including
-		 * reasoning content) are merged; when disabled, only current message metadata is used.
+		 * metadata across chunks. When enabled, last and current chunk metadata
+		 * (including reasoning content) are merged; when disabled, only current message
+		 * metadata is used.
 		 * @param merge true to enable merge, false to use current message metadata only
 		 * @return this builder for chaining
 		 */
@@ -453,8 +452,8 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 		}
 
 		/**
-		 * Sets how many latest checkpoints a saver should retain for the run.
-		 * A value less than or equal to 0 disables checkpoint retention pruning.
+		 * Sets how many latest checkpoints a saver should retain for the run. A value
+		 * less than or equal to 0 disables checkpoint retention pruning.
 		 * @param numRetained number of latest checkpoints to retain
 		 * @return this builder for chaining
 		 */
@@ -489,8 +488,8 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 		/**
 		 * Sets a default {@link Executor} for all parallel nodes.
 		 * <p>
-		 * This executor will be used for parallel nodes that don't have a specific executor
-		 * configured via {@link #addParallelNodeExecutor(String, Executor)}.
+		 * This executor will be used for parallel nodes that don't have a specific
+		 * executor configured via {@link #addParallelNodeExecutor(String, Executor)}.
 		 * @param executor the {@link Executor} to use as the default for parallel nodes.
 		 * @return this {@code Builder} instance for method chaining.
 		 */
@@ -501,29 +500,32 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 		/**
 		 * Adds an aggregation strategy for a specific parallel node's target node.
 		 * <p>
-		 * This allows you to control how parallel branches are aggregated. When a parallel node
-		 * executes, it will look for an aggregation strategy using the target node ID (the node
-		 * that follows the parallel node). If found, it will use the specified strategy to determine
-		 * whether to wait for all branches (ALL_OF) or proceed with the first completed branch (ANY_OF).
-		 * @param targetNodeId the ID of the merge node (the single node that aggregates results from all parallel branches) that follows the parallel branch nodes.
+		 * This allows you to control how parallel branches are aggregated. When a
+		 * parallel node executes, it will look for an aggregation strategy using the
+		 * target node ID (the node that follows the parallel node). If found, it will use
+		 * the specified strategy to determine whether to wait for all branches (ALL_OF)
+		 * or proceed with the first completed branch (ANY_OF).
+		 * @param targetNodeId the ID of the merge node (the single node that aggregates
+		 * results from all parallel branches) that follows the parallel branch nodes.
 		 * @param strategy the {@link NodeAggregationStrategy} to use for aggregation.
 		 * @return this {@code Builder} instance for method chaining.
 		 */
 		public Builder addParallelNodeAggregationStrategy(String targetNodeId, NodeAggregationStrategy strategy) {
-			return addMetadata(ParallelNode.formatTargetNodeId(targetNodeId), 
+			return addMetadata(ParallelNode.formatTargetNodeId(targetNodeId),
 					requireNonNull(strategy, "strategy cannot be null!"));
 		}
 
 		/**
 		 * Sets a default aggregation strategy for all parallel nodes.
 		 * <p>
-		 * This strategy will be used for parallel nodes that don't have a specific strategy
-		 * configured via {@link #addParallelNodeAggregationStrategy(String, NodeAggregationStrategy)}.
+		 * This strategy will be used for parallel nodes that don't have a specific
+		 * strategy configured via
+		 * {@link #addParallelNodeAggregationStrategy(String, NodeAggregationStrategy)}.
 		 * @param strategy the {@link NodeAggregationStrategy} to use as the default.
 		 * @return this {@code Builder} instance for method chaining.
 		 */
 		public Builder defaultParallelAggregationStrategy(NodeAggregationStrategy strategy) {
-			return addMetadata(DEFAULT_PARALLEL_AGGREGATION_STRATEGY_KEY, 
+			return addMetadata(DEFAULT_PARALLEL_AGGREGATION_STRATEGY_KEY,
 					requireNonNull(strategy, "strategy cannot be null!"));
 		}
 
