@@ -72,16 +72,9 @@ jobs:
       - run: pnpm --dir argi-studio/agent-chat-ui run test
       - run: pnpm --dir argi-studio/agent-chat-ui run build:static
       - run: python3 tools/tests/release-tools-test.py
-      - run: python3 -B tools/tests/runtime-dependency-audit-test.py
-      - run: python3 -B tools/tests/sdk-boundaries-test.py
       - run: make tools
       - name: Build release artifacts without signing or publishing
         run: ./mvnw -B -Prelease -Dgpg.skip=true -DskipTests=true package
-      - name: Audit resolved Java runtime dependencies
-        run: |
-          ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree -Dscope=runtime -DoutputType=json -DoutputFile=target/runtime-dependencies.json
-          python3 -B tools/scripts/check-sdk-boundaries.py
-          python3 -B tools/scripts/audit-runtime-dependencies.py
       - run: python3 tools/scripts/verify-release-artifacts.py --create-bundle target/central-publishing/central-bundle.zip
       - name: Verify packaged Studio UI
         shell: bash

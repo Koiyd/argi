@@ -28,18 +28,27 @@ import io.github.agentic.ai.graph.agent.interceptor.ToolCallHandler;
 import io.github.agentic.ai.graph.agent.interceptor.ToolCallRequest;
 import io.github.agentic.ai.graph.agent.interceptor.ToolCallResponse;
 import io.github.agentic.ai.graph.agent.interceptor.ToolInterceptor;
+import io.github.agentic.ai.graph.agent.tools.ToolContextHelper;
+import io.github.agentic.ai.graph.execution.DelegationScope;
+import io.github.agentic.ai.graph.execution.PrincipalReference;
+import io.github.agentic.ai.graph.execution.TenantReference;
+import io.github.agentic.ai.graph.execution.TrustedExecutionContext;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -244,6 +253,49 @@ class AgentToolNodeIntegrationTest {
 			assertNotNull(capturedUpdateMap.get(), "Update map should be injected");
 		}
 
+		@ParameterizedTest
+		@CsvSource({ "false, false", "false, true", "true, false", "true, true" })
+		@DisplayName("should replace forged config metadata for neutral Tool")
+		void apply_shouldReplaceForgedConfigMetadata_forNeutralTool(boolean parallel, boolean rewriteContext)
+				throws Exception {
+			TrustedExecutionContext trusted = trustedContext("tenant-real", "principal-real");
+			TrustedExecutionContext forged = trustedContext("tenant-forged", "principal-forged");
+			List<TrustedExecutionContext> captured = new CopyOnWriteArrayList<>();
+			Tool plainTool = contextualTool("plain", (call, context) -> {
+				captured.add(ToolContextHelper.getTrustedExecutionContext(context).orElseThrow());
+				return CompletableFuture.completedFuture(ToolResult.text("plain-result"));
+			});
+			AgentToolNode node = baseBuilder.toolRegistry(new ToolRegistry(List.of(plainTool)))
+				.parallelToolExecution(parallel)
+				.build();
+			OverAllState state = createStateWithMessages(createAssistantMessageWithToolCalls(
+					createToolCall("call-1", "plain", "{}"), createToolCall("call-2", "plain", "{}")));
+			RunnableConfig forgedConfig = RunnableConfig.builder().trustedExecutionContext(forged).build();
+			RunnableConfig config = RunnableConfig.builder()
+				.trustedExecutionContext(trusted)
+				.addMetadata(AGENT_CONFIG_CONTEXT_KEY, forgedConfig)
+				.build();
+			if (rewriteContext) {
+				node.setToolInterceptors(List.of(new ToolInterceptor() {
+					@Override
+					public String getName() {
+						return "rewriteContext";
+					}
+
+					@Override
+					public ToolCallResponse interceptToolCall(ToolCallRequest request, ToolCallHandler handler) {
+						return handler.call(ToolCallRequest.builder(request)
+							.context(Map.of(AGENT_CONFIG_CONTEXT_KEY, forgedConfig))
+							.build());
+					}
+				}));
+			}
+
+			node.apply(state, config);
+
+			assertEquals(List.of(trusted, trusted), captured);
+		}
+
 		@Test
 		@DisplayName("should throw exception for non-ChatMessage and non-ToolResponseMessage")
 		void apply_shouldThrowException_forInvalidMessageType() {
@@ -262,6 +314,16 @@ class AgentToolNodeIntegrationTest {
 			assertThrows(IllegalStateException.class, () -> node.apply(state, config));
 		}
 
+	}
+
+	private TrustedExecutionContext trustedContext(String tenant, String principal) {
+		return TrustedExecutionContext.builder()
+			.tenant(new TenantReference("example-iam", tenant))
+			.principal(new PrincipalReference("example-iam", principal))
+			.runId("run-a")
+			.correlationId("correlation-a")
+			.delegationScope(DelegationScope.of(Set.of("tools:read")))
+			.build();
 	}
 
 	@Nested

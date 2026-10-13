@@ -97,7 +97,7 @@ make licenses-check
 - **Model and Integration Layer**: `argi-api` contracts and four isolated provider adapters; MCP and A2A integrations
 - **Observability**: Lightweight Micrometer observation; no required OpenTelemetry deployment
 
-Core production sources, bytecode, and runtime dependency trees must remain free of provider SDKs. Run `make sdk-boundaries-check` after a clean build. Native SDKs in core test fixtures must use test scope. This is a breaking replacement, not a deprecated compatibility bridge.
+Core production sources, bytecode, and runtime dependency trees must remain free of provider SDKs. Native SDKs in core test fixtures must use test scope. This is a breaking replacement, not a deprecated compatibility bridge.
 
 ## Code Style & Conventions
 

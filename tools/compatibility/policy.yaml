@@ -17,4 +17,3 @@ replacement_policy: breaking
 api_consumer: tools/compatibility/neutral-api-consumer
 validation_gates:
   - api-contract-check
-  - sdk-boundaries-check

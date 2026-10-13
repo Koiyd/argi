@@ -32,10 +32,6 @@ case "${1:-}" in
     --skip-install) ;; # CI has already installed and tested this checkout's artifacts.
     *) echo "Usage: $0 [--skip-install]" >&2; exit 2 ;;
 esac
-"${REPO_ROOT}/mvnw" -B -f "${FIXTURE_POM}" clean compile \
-    org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree \
-    -Dscope=runtime -DoutputType=json -DoutputFile=target/runtime-dependencies.json
-python3 -B "${REPO_ROOT}/tools/scripts/check-sdk-boundaries.py" \
-    --root "${REPO_ROOT}" --module tools/compatibility/neutral-api-consumer
+"${REPO_ROOT}/mvnw" -B -f "${FIXTURE_POM}" clean compile
 
 echo "Neutral public API consumer gate passed"

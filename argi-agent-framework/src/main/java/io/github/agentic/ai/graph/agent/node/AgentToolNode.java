@@ -609,6 +609,8 @@ public class AgentToolNode implements NodeActionWithConfig {
 		}
 		Map<String, Object> attributes = new HashMap<>(toolContext);
 		attributes.putAll(request.getContext());
+		// Framework context keys override metadata and interceptor rewrites. Trusted
+		// identity is read only from the actual invocation's RunnableConfig.
 		attributes.put(AGENT_STATE_CONTEXT_KEY, state);
 		attributes.put(AGENT_CONFIG_CONTEXT_KEY, config);
 		Map<String, Object> invocationUpdates = new ConcurrentHashMap<>();

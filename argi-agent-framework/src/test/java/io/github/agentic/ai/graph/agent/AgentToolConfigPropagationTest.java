@@ -24,6 +24,10 @@ import io.github.agentic.ai.graph.agent.hook.HookPositions;
 import io.github.agentic.ai.graph.agent.hook.ModelHook;
 import io.github.agentic.ai.graph.agent.tools.ToolContextConstants;
 import io.github.agentic.ai.graph.checkpoint.savers.MemorySaver;
+import io.github.agentic.ai.graph.execution.DelegationScope;
+import io.github.agentic.ai.graph.execution.PrincipalReference;
+import io.github.agentic.ai.graph.execution.TenantReference;
+import io.github.agentic.ai.graph.execution.TrustedExecutionContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -35,6 +39,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -62,6 +67,13 @@ class AgentToolConfigPropagationTest {
 			.threadId("parent-thread")
 			.addMetadata("_AGENT_", "parent_agent")
 			.addMetadata("business_key", "business-value")
+			.trustedExecutionContext(TrustedExecutionContext.builder()
+				.tenant(new TenantReference("example-iam", "tenant-a"))
+				.principal(new PrincipalReference("example-iam", "principal-a"))
+				.runId("run-parent")
+				.correlationId("correlation-a")
+				.delegationScope(DelegationScope.of(Set.of("agents:delegate")))
+				.build())
 			.build();
 
 		ChatMessage result = new AgentTool.AgentToolExecutor(subAgent).executeAgent("{\"input\":\"hello\"}",
@@ -77,6 +89,10 @@ class AgentToolConfigPropagationTest {
 				"Business metadata from parent config should be preserved");
 		assertEquals("parent-thread_child_agent", capturedConfig.threadId().orElse(null),
 				"Sub-agent thread id should be derived from the parent thread id");
+		assertEquals("tenant-a", capturedConfig.trustedExecutionContext().orElseThrow().tenant().id(),
+				"Sub-agent should receive the trusted tenant reference");
+		assertEquals("principal-a", capturedConfig.trustedExecutionContext().orElseThrow().principal().id(),
+				"Sub-agent should receive the trusted principal reference");
 	}
 
 	@Test

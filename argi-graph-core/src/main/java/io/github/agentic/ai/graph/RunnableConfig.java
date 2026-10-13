@@ -17,6 +17,7 @@ package io.github.agentic.ai.graph;
 
 import io.github.agentic.ai.graph.action.InterruptionMetadata;
 import io.github.agentic.ai.graph.checkpoint.lease.ExecutionGuard;
+import io.github.agentic.ai.graph.execution.TrustedExecutionContext;
 import io.github.agentic.ai.graph.internal.node.ParallelNode;
 import io.github.agentic.ai.graph.store.Store;
 
@@ -97,6 +98,9 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 	@JsonIgnore
 	private final transient ExecutionGuard executionGuard;
 
+	@JsonIgnore
+	private final transient TrustedExecutionContext trustedExecutionContext;
+
 	/**
 	 * Creates a new instance of {@code RunnableConfig} as a copy of the provided
 	 * {@code config}.
@@ -112,6 +116,7 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 		this.store = builder.store;
 		this.context = builder.context;
 		this.executionGuard = builder.executionGuard;
+		this.trustedExecutionContext = builder.trustedExecutionContext;
 	}
 
 	public Store store() {
@@ -156,6 +161,15 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 	@JsonIgnore
 	public Optional<ExecutionGuard> executionGuard() {
 		return ofNullable(executionGuard);
+	}
+
+	/**
+	 * Returns application-authenticated identity facts and execution constraints. Ordinary
+	 * metadata is intentionally not consulted by this accessor.
+	 */
+	@JsonIgnore
+	public Optional<TrustedExecutionContext> trustedExecutionContext() {
+		return ofNullable(this.trustedExecutionContext);
 	}
 
 	public void assertExecutionActive() {
@@ -355,6 +369,8 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 		private ExecutionGuard executionGuard;
 
+		private TrustedExecutionContext trustedExecutionContext;
+
 		private CompiledGraph.StreamMode streamMode = CompiledGraph.StreamMode.VALUES;
 
 		/**
@@ -380,6 +396,7 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 			this.store = config.store;
 			this.context = new ConcurrentHashMap<>(config.context);
 			this.executionGuard = config.executionGuard;
+			this.trustedExecutionContext = config.trustedExecutionContext;
 		}
 
 		/**
@@ -463,6 +480,15 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 		public Builder executionGuard(ExecutionGuard executionGuard) {
 			this.executionGuard = executionGuard;
+			return this;
+		}
+
+		/**
+		 * Attach trusted identity facts created by the application authentication boundary.
+		 * This is separate from {@link #addMetadata(String, Object)} by design.
+		 */
+		public Builder trustedExecutionContext(TrustedExecutionContext trustedExecutionContext) {
+			this.trustedExecutionContext = trustedExecutionContext;
 			return this;
 		}
 

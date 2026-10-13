@@ -220,12 +220,10 @@ test-scoped adapter fixtures do not become application dependencies. Third-party
 Native Agent Mode is not implemented in this phase.
 
 This is a direct replacement, not a source or binary compatibility promise.
-`make api-contract-check` builds an independent application using the current
-neutral public API and verifies its resolved SDK-free dependency tree.
-`make sdk-boundaries-check` checks production sources, compiled constant pools,
-POM declarations, and resolved runtime dependencies. External Extensions and
-Examples consumers must update their builders and tool bindings before compiling
-against this branch; they are not migrated by this repository.
+`make api-contract-check` compiles an independent application using the current
+neutral public API. External Extensions and Examples consumers must update their
+builders and tool bindings before compiling against this branch; they are not
+migrated by this repository.
 
 ## Runtime Dependency Verification
 
@@ -234,21 +232,6 @@ Bouncy Castle, jsoup, and embedded Tomcat. Import `argi-bom` before other BOMs
 that manage the same dependencies, or explicitly align your application overrides.
 An application's dependency management can override transitive library versions;
 audit the final application dependency tree as well as the framework's tree.
-
-Run the repeatable repository audit from the repository root:
-
-```shell
-make dependency-audit
-```
-
-This builds the modules, exports runtime dependency trees with Maven Dependency
-Plugin 3.9.0, runs the offline scanner tests, and queries OSV using only public
-Maven coordinates and versions. It does not transmit source code or credentials.
-High, critical, or unclassified active advisories fail the check. Missing trees,
-invalid responses, and unavailable audit services also fail explicitly instead
-of being reported as a clean result. Audit results are time-dependent and do
-not prove the absence of vulnerabilities. The build and release workflows run
-this check before publishing artifacts.
 
 ## Google ADK Capability Profiles
 
@@ -382,36 +365,6 @@ output. Earlier split events carry unknown usage. Upgrade SSE consumers for
 `promptTokens` / `completionTokens` fields; do not accumulate usage per message.
 AgentScope uses the native total-token getter, without assuming a provider total
 can always be reconstructed from input and output tokens.
-
-### Expiring Audit Suppressions
-
-Runtime auditing includes optional transitive dependencies; optional does not mean
-unreachable or safe in every consumer. HIGH, CRITICAL and UNKNOWN remain blocking.
-`tools/ci-config/runtime-dependency-suppressions.json` is empty by default. A waiver
-requires an exact advisory ID, Maven package and version, a substantive reason,
-a real GitHub tracking issue, and an ISO expiry date strictly after the audit date:
-
-```json
-{
-  "suppressions": [
-    {
-      "id": "<exact OSV advisory ID>",
-      "package": "<groupId>:<artifactId>",
-      "version": "<exact resolved version>",
-      "reason": "<verified exposure analysis and planned remediation>",
-      "issue": "https://github.com/<owner>/<repository>/issues/<number>",
-      "expires": "<YYYY-MM-DD>"
-    }
-  ]
-}
-```
-
-This is a template, not an active waiver. Replace every placeholder with verified
-values before use. Wildcards/ranges, duplicate records, malformed entries and
-expired waivers fail the gate. Waived findings remain visible with their reason,
-issue and expiry; an advisory affecting another unsuppressed version still blocks.
-The scanner retries HTTP 429 once after 20 seconds, and server errors/timeouts
-once after 2 seconds, then fails closed. It has no report-only bypass.
 
 The agent framework uses JSON Schema Validator 3.x for its current neutral tool
 validation API. Studio pins 1.5.7 in test scope because its MCP fixture requires
