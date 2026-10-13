@@ -49,7 +49,7 @@ class StreamingMessagesTest {
 			assertEquals("tools", item.node());
 			assertEquals("agent", item.agent());
 			assertSame(state, item.state());
-			assertEquals(usage, item.tokenUsage());
+			assertEquals(index == split.size() - 1 ? usage : Usage.unknown(), item.tokenUsage());
 			assertTrue(item.isSubGraph());
 			assertEquals(OutputType.AGENT_TOOL_FINISHED, item.getOutputType());
 		}

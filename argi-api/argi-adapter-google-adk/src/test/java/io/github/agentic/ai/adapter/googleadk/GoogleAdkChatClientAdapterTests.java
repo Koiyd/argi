@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.adapter.googleadk;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import com.google.adk.models.BaseLlm;
 import com.google.adk.models.BaseLlmConnection;
 import com.google.adk.models.Claude;
@@ -189,7 +190,8 @@ class GoogleAdkChatClientAdapterTests {
 					.filter(event -> event.type() == ChatEvent.Type.TEXT_DELTA)
 					.map(ChatEvent::text)
 					.reduce("", String::concat));
-		assertEquals("reasoning", events.get(events.size() - 1).response().metadata().get("thinking"));
+		assertEquals("reasoning",
+				events.get(events.size() - 1).response().messages().get(0).metadata().get(ChatMetadataKeys.REASONING));
 	}
 
 	@Test
@@ -409,7 +411,7 @@ class GoogleAdkChatClientAdapterTests {
 		var adapter = adapter(model);
 		var response = adapter.callBlocking(request);
 		assertTrue(adapter.capabilities().structuredOutput());
-		assertEquals("reasoning", response.metadata().get("thinking"));
+		assertEquals("reasoning", response.messages().get(0).metadata().get(ChatMetadataKeys.REASONING));
 		assertEquals("version", response.model());
 		assertTrue(!response.toolCalls().get(0).id().isBlank());
 		assertTrue(model.request.config().orElseThrow().responseJsonSchema().isPresent());

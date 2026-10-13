@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.adapter.springai;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import io.github.agentic.ai.api.chat.ChatClientCapabilities;
 import io.github.agentic.ai.api.chat.ChatEvent;
 import io.github.agentic.ai.api.chat.ChatMessage;
@@ -83,6 +84,12 @@ public final class SpringAiChatClientAdapter implements ChatClient {
 			AtomicBoolean received = new AtomicBoolean();
 			Flux<org.springframework.ai.chat.model.ChatResponse> chunks = requestSpec(request).stream()
 				.chatResponse()
+				// Native advisors aggregate before ARGI sees chunks. Preserve their chain
+				// and report invalid native data rather than synthesizing a response.
+				.onErrorMap(NullPointerException.class,
+						failure -> new IllegalStateException("Spring AI stream failed before ARGI conversion; "
+								+ "check native generation outputs and advisor responses. "
+								+ "Usage-only chunks must use an empty generation list", failure))
 				.doOnNext(response -> {
 					if (!response.getResults().isEmpty()) {
 						received.set(true);
@@ -93,8 +100,8 @@ public final class SpringAiChatClientAdapter implements ChatClient {
 				// delta.
 				.filter(response -> !response.getResults().isEmpty())
 				.map(SpringAiChatClientAdapter::toArgiResponse)
-				.filter(response -> !response.text().isEmpty()
-						|| response.messages().get(0).metadata().containsKey("reasoningContent"))
+				.filter(response -> !response.messages().isEmpty() && (!response.text().isEmpty()
+						|| response.messages().get(0).metadata().containsKey(ChatMetadataKeys.REASONING)))
 				.map(response -> new ChatEvent(ChatEvent.Type.TEXT_DELTA, response.text(), null, null, null,
 						response.messages().get(0).metadata()))
 				.concatWith(Flux.defer(() -> received.get() ? finalEvents(toArgiResponse(aggregate.get()))
@@ -211,8 +218,12 @@ public final class SpringAiChatClientAdapter implements ChatClient {
 							? UUID.randomUUID().toString() : toolCall.id(), toolCall.name(), toolCall.arguments()))
 					.toList());
 			ChatMessage message = ChatMessage.assistant(output.getText(), toolCalls);
-			messages
-				.add(new ChatMessage(message.role(), message.content(), toolCalls, null, null, output.getMetadata()));
+			Map<String, Object> properties = new java.util.HashMap<>(output.getMetadata());
+			Object reasoning = properties.remove("reasoningContent");
+			if (reasoning != null) {
+				properties.put(ChatMetadataKeys.REASONING, reasoning);
+			}
+			messages.add(message.withMetadata(properties));
 		}
 		var metadata = response.getMetadata();
 		Usage usage = metadata == null || metadata.getUsage() == null ? Usage.unknown() : toUsage(metadata.getUsage());

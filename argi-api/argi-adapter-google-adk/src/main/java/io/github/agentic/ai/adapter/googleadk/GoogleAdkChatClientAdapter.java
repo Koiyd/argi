@@ -15,6 +15,8 @@
  */
 package io.github.agentic.ai.adapter.googleadk;
 
+import io.github.agentic.ai.api.chat.ChatStreams;
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -288,9 +290,11 @@ public final class GoogleAdkChatClientAdapter implements ChatClient {
 			case SAFETY, RECITATION, BLOCKLIST, PROHIBITED_CONTENT -> FinishReason.CONTENT_FILTER;
 			default -> FinishReason.OTHER;
 		}).orElse(null);
-		Map<String, Object> metadata = thinking.isEmpty() ? Map.of() : Map.of("thinking", thinking.toString());
+		Map<String, Object> metadata = thinking.isEmpty() ? Map.of()
+				: Map.of(ChatMetadataKeys.REASONING, thinking.toString());
 		return new ChatResponse(null, response.modelVersion().orElse(model.model()),
-				List.of(ChatMessage.assistant(text.toString(), calls)), calls, finish, usage, metadata);
+				List.of(ChatMessage.assistant(text.toString(), calls).withMetadata(metadata)), calls, finish, usage,
+				Map.of());
 	}
 
 	private static void checkResponse(LlmResponse response) {
@@ -376,10 +380,7 @@ public final class GoogleAdkChatClientAdapter implements ChatClient {
 			}
 			snapshot = chunk;
 			terminal = completesTurn;
-			if (!text.startsWith(emitted.toString())) {
-				return Flux.error(new IllegalStateException("ADK final text does not match streamed deltas"));
-			}
-			String suffix = text.substring(emitted.length());
+			String suffix = ChatStreams.unseenSuffix(text, emitted);
 			emitted.append(suffix);
 			return suffix.isEmpty() ? Flux.empty() : Flux.just(ChatEvent.textDelta(suffix));
 		}

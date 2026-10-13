@@ -16,6 +16,7 @@
 
 package io.github.agentic.ai.graph.executor;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import io.github.agentic.ai.api.chat.ChatMessage;
 import io.github.agentic.ai.api.chat.ChatRole;
 
@@ -480,8 +481,8 @@ public class NodeExecutor extends BaseGraphExecutor {
 
 	/**
 	 * Merges metadata from last and current streaming chunks, aggregating
-	 * {@code reasoningContent} by concatenation (each chunk carries partial content).
-	 * Other metadata keys are taken from current; fallback to last when absent.
+	 * {@code reasoning} by concatenation (each chunk carries partial content). Other
+	 * metadata keys are taken from current; fallback to last when absent.
 	 */
 	private static Map<String, Object> mergeMetadataWithReasoningContent(Map<String, Object> lastMetadata,
 			Map<String, Object> currentMetadata) {
@@ -492,9 +493,9 @@ public class NodeExecutor extends BaseGraphExecutor {
 		if (currentMetadata != null) {
 			merged.putAll(currentMetadata);
 		}
-		// Aggregate reasoningContent: concatenate last + current (streaming chunks are
+		// Aggregate reasoning metadata: concatenate last + current (streaming chunks are
 		// incremental)
-		String key = "reasoningContent";
+		String key = ChatMetadataKeys.REASONING;
 		String last = (lastMetadata != null && lastMetadata.containsKey(key)) ? String.valueOf(lastMetadata.get(key))
 				: "";
 		String current = (currentMetadata != null && currentMetadata.containsKey(key))

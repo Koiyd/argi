@@ -78,7 +78,7 @@ class GraphRunnerContextNoDeepSeekRuntimeTest {
 		// The metadata key constants are the public contract downstream consumers code
 		// against.
 		assertEquals("isReasoning", GraphRunnerContext.IS_REASONING_METADATA_KEY);
-		assertEquals("reasoningContent", GraphRunnerContext.REASONING_CONTENT_METADATA_KEY);
+		assertEquals("reasoning", GraphRunnerContext.REASONING_CONTENT_METADATA_KEY);
 		assertTrue(GraphRunnerContext.REASONING_CONTENT_METADATA_KEY.length() > 0);
 	}
 

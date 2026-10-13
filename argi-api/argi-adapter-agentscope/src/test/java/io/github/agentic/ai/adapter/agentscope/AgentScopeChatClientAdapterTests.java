@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.adapter.agentscope;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.TextBlock;
@@ -66,9 +67,35 @@ class AgentScopeChatClientAdapterTests {
 		assertEquals("hello", response.text());
 		assertEquals("{\"q\":\"test\"}", response.toolCalls().get(0).arguments());
 		assertEquals("call-1", response.toolCalls().get(0).id());
-		assertEquals("reasoning", response.metadata().get("thinking"));
+		assertEquals("reasoning", response.messages().get(0).metadata().get(ChatMetadataKeys.REASONING));
 		assertEquals(15L, response.usage().totalTokens());
 		assertEquals(1, model.calls);
+	}
+
+	@Test
+	void preservesReasoningAndNativeUsageTotalsInCallAndStream() {
+		StubModel model = new StubModel();
+		// The SDK getter is authoritative, including implementations with extra tokens.
+		var nativeUsage = new ChatUsage(10, 5, 0.0) {
+			@Override
+			public int getTotalTokens() {
+				return 23;
+			}
+		};
+		model.chunks = Flux.just(chunk(ThinkingBlock.builder().thinking("reasoning").build()),
+				ChatResponse.builder().content(List.of(text("answer"))).usage(nativeUsage).build());
+		var adapter = new AgentScopeChatClientAdapter(model);
+		var response = adapter.callBlocking(REQUEST);
+		var events = JdkFlowAdapter.flowPublisherToFlux(adapter.stream(REQUEST))
+			.collectList()
+			.block(Duration.ofSeconds(5));
+		assertNotNull(events);
+		assertEquals(response, events.get(events.size() - 1).response());
+		assertEquals(Map.of(ChatMetadataKeys.REASONING, "reasoning"), response.messages().get(0).metadata());
+		assertTrue(!response.metadata().containsKey("thinking"));
+		assertEquals(10L, response.usage().inputTokens());
+		assertEquals(5L, response.usage().outputTokens());
+		assertEquals(23L, response.usage().totalTokens());
 	}
 
 	@Test

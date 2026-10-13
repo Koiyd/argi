@@ -268,15 +268,17 @@ public interface JacksonDeserializer<T> {
 						yield reconstructGraphResponse(valueNode, objectMapper, typeMapper);
 					}
 					if (!invalidMapEnvelopeMarker && "ChatResponse".equals(type)) {
-						// ChatResponse cannot be reconstructed (no default constructor),
-						// return null as it should not be persisted in state
-						yield null;
+						throw new IOException(
+								"Legacy ChatResponse checkpoints require export with the previous runtime");
 					}
 					if (!invalidMapEnvelopeMarker && "CompletableFuture".equals(type)) {
 						yield reconstructCompletableFuture(valueNode, objectMapper, typeMapper);
 					}
 					if (!invalidMapEnvelopeMarker && ArgiChatRecordSupport.supports(type)) {
 						yield ArgiChatRecordSupport.read(type, valueNode, objectMapper, typeMapper);
+					}
+					if (!invalidMapEnvelopeMarker && LegacyChatRecordSupport.isLegacyType(type)) {
+						yield LegacyChatRecordSupport.read(type, valueNode, objectMapper, typeMapper);
 					}
 					if (!invalidMapEnvelopeMarker && "ARGI_STREAMING_OUTPUT".equals(type)) {
 						ObjectMapper mapper = typeMapper.mapperWithoutDefaultTyping(objectMapper);
@@ -301,6 +303,9 @@ public interface JacksonDeserializer<T> {
 				}
 				if (!invalidMapEnvelopeMarker && valueNode.has("@class")) {
 					String className = valueNode.get("@class").asText();
+					if (LegacyChatRecordSupport.isLegacyType(className)) {
+						yield LegacyChatRecordSupport.read(className, valueNode, objectMapper, typeMapper);
+					}
 					if (!(typeHint != null && className.startsWith("java.util."))) {
 						ObjectNode copy = valueNode.deepCopy();
 						copy.remove("@class");
@@ -317,6 +322,9 @@ public interface JacksonDeserializer<T> {
 					}
 				}
 				if (!invalidMapEnvelopeMarker && typeHint != null) {
+					if (LegacyChatRecordSupport.isLegacyType(typeHint)) {
+						yield LegacyChatRecordSupport.read(typeHint, valueNode, objectMapper, typeMapper);
+					}
 					ObjectNode copy = valueNode.deepCopy();
 					copy.remove("@typeHint");
 					copy.remove(TYPE_PROPERTY);
@@ -390,7 +398,7 @@ public interface JacksonDeserializer<T> {
 				if (className.startsWith("java.")) {
 					List<Object> list = new java.util.ArrayList<>(payload.size());
 					for (JsonNode element : payload) {
-						list.add(valueFromNode(element, objectMapper, typeMapper));
+						addArrayElement(list, element, objectMapper, typeMapper);
 					}
 					return list;
 				}
@@ -398,9 +406,21 @@ public interface JacksonDeserializer<T> {
 		}
 		List<Object> list = new java.util.ArrayList<>(valueNode.size());
 		for (JsonNode element : valueNode) {
-			list.add(valueFromNode(element, objectMapper, typeMapper));
+			addArrayElement(list, element, objectMapper, typeMapper);
 		}
 		return list;
+	}
+
+	private static void addArrayElement(List<Object> list, JsonNode element, ObjectMapper mapper, TypeMapper types)
+			throws IOException {
+		Object value = valueFromNode(element, mapper, types);
+		// Only the old grouped tool envelope expands; business nested lists stay nested.
+		if (LegacyChatRecordSupport.isToolGroup(element) && value instanceof List<?> results) {
+			list.addAll(results);
+		}
+		else {
+			list.add(value);
+		}
 	}
 
 	/**

@@ -16,6 +16,7 @@
 """Offline regression tests for the runtime dependency audit."""
 
 import contextlib
+import datetime
 import importlib.util
 import io
 import json
@@ -85,10 +86,67 @@ class RuntimeAuditTest(unittest.TestCase):
                 if severity:
                     advisory["database_specific"] = {"severity": severity}
                 with contextlib.redirect_stdout(io.StringIO()), \
+                        patch.object(AUDIT, "load_suppressions", return_value={}), \
                         patch.object(AUDIT, "collect_packages", return_value=(["."], {coordinate: {"."}})), \
                         patch.object(AUDIT, "query_advisories", return_value={"A": {coordinate}}), \
                         patch.object(AUDIT, "request_json", return_value=advisory):
                     self.assertEqual(expected, AUDIT.audit(Path("."), "tree.json"))
+
+    def test_scoped_suppression_does_not_hide_other_versions_or_advisories(self):
+        waived = ("org.example:lib", "1")
+        exposed = ("org.example:lib", "2")
+        key = ("A", *waived)
+        entry = {"id": "A", "package": waived[0], "version": "1", "reason": "Reviewed reachability",
+                 "issue": "https://github.com/example/repo/issues/1", "expires": "2099-01-01"}
+        for matches, expected in [({"A": {waived}}, 0), ({"A": {waived, exposed}}, 1),
+                                  ({"B": {waived}}, 1)]:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    patch.object(AUDIT, "load_suppressions", return_value={key: entry}), \
+                    patch.object(AUDIT, "collect_packages", return_value=(["."], {waived: {"."}, exposed: {"."}})), \
+                    patch.object(AUDIT, "query_advisories", return_value=matches), \
+                    patch.object(AUDIT, "request_json", return_value={"database_specific": {"severity": "HIGH"}}):
+                self.assertEqual(expected, AUDIT.audit(Path("."), "tree.json"))
+
+    def test_malformed_or_unrecognized_severity_remains_blocking(self):
+        coordinate = ("org.example:lib", "1")
+        for metadata in [None, "HIGH", {}, {"severity": None}, {"severity": 7},
+                         {"severity": ""}, {"severity": "unexpected"}, {"severity": " high "}]:
+            with self.subTest(metadata=metadata), contextlib.redirect_stdout(io.StringIO()), \
+                    patch.object(AUDIT, "load_suppressions", return_value={}), \
+                    patch.object(AUDIT, "collect_packages", return_value=(["."], {coordinate: {"."}})), \
+                    patch.object(AUDIT, "query_advisories", return_value={"A": {coordinate}}), \
+                    patch.object(AUDIT, "request_json", return_value={"database_specific": metadata}):
+                self.assertEqual(1, AUDIT.audit(Path("."), "tree.json"))
+
+    def test_suppression_validation(self):
+        entry = {"id": "GHSA-example", "package": "org.example:lib", "version": "1.0",
+                 "reason": "Reviewed reachability", "issue": "https://github.com/example/repo/issues/1",
+                 "expires": "2026-10-14"}
+        today = datetime.date(2026, 10, 13)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "suppressions.json"
+            path.write_text(json.dumps({"suppressions": [entry]}), encoding="utf-8")
+            self.assertEqual(1, len(AUDIT.load_suppressions(path, today)))
+            for replacement in [{"expires": "2026-10-13"}, {"expires": "2026-10-12"},
+                                {"expires": "bad"}, {"reason": ""}, {"issue": "http://example.com"},
+                                {"version": "*"}, {"version": "[1,2)"}, {"package": "*"},
+                                {"extra": "unexpected"}]:
+                with self.subTest(replacement=replacement):
+                    path.write_text(json.dumps({"suppressions": [dict(entry, **replacement)]}), encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        AUDIT.load_suppressions(path, today)
+            for document in [[], {"suppressions": "invalid"}, {"suppressions": [entry, entry]},
+                             {"suppressions": [None]}, {"suppressions": [dict(entry, reason=None)]}]:
+                path.write_text(json.dumps(document), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    AUDIT.load_suppressions(path, today)
+
+    def test_invalid_suppression_fails_before_network(self):
+        with patch.object(AUDIT, "load_suppressions", side_effect=ValueError("expired")), \
+                patch.object(AUDIT, "query_advisories") as query, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(2, AUDIT.main([]))
+            query.assert_not_called()
 
     def test_http_retry_backoff_and_limit(self):
         for status, delay in [(429, 20), (503, 2), (400, None)]:

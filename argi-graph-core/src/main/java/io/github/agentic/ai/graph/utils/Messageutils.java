@@ -16,6 +16,11 @@
 package io.github.agentic.ai.graph.utils;
 
 import io.github.agentic.ai.api.chat.ChatMessage;
+import io.github.agentic.ai.api.chat.ChatRole;
+import io.github.agentic.ai.api.chat.ContentPart;
+import io.github.agentic.ai.api.chat.ToolCall;
+import io.github.agentic.ai.graph.serializer.plain_text.jackson.LegacyChatRecordSupport;
+import java.util.Locale;
 
 import org.springframework.util.StringUtils;
 
@@ -75,21 +80,24 @@ public class Messageutils {
 		else {
 			// For other types, attempt conversion through JSON
 			// serialization/deserialization
+			JsonNode jsonNode;
 			try {
 				String json = objectMapper.writeValueAsString(value);
-				JsonNode jsonNode = objectMapper.readTree(json);
-				if (jsonNode.isObject()) {
-					ChatMessage message = convertJsonNodeToMessage(jsonNode);
-					if (message != null) {
-						result.add(message);
-					}
-				}
+				jsonNode = objectMapper.readTree(json);
 			}
-			catch (Exception e) {
+			catch (com.fasterxml.jackson.core.JsonProcessingException e) {
 				// If conversion fails, treat it as a string
 				String text = value.toString();
 				if (StringUtils.hasLength(text)) {
 					result.add(ChatMessage.user(text));
+				}
+				return result;
+			}
+			// Invalid roles and legacy markers must not silently become user text.
+			if (jsonNode.isObject()) {
+				ChatMessage message = convertJsonNodeToMessage(jsonNode);
+				if (message != null) {
+					result.add(message);
 				}
 			}
 		}
@@ -105,34 +113,45 @@ public class Messageutils {
 			return null;
 		}
 
-		Object roleObj = map.get("role");
-		Object textObj = map.get("text");
-		Object contentObj = map.get("content");
-
-		// Prioritize content, then text
-		String content = null;
-		if (contentObj != null) {
-			content = contentObj.toString();
+		for (String marker : List.of("@class", "@type", "@typeHint")) {
+			Object type = map.get(marker);
+			if (type instanceof String name && LegacyChatRecordSupport.isLegacyType(name)) {
+				throw new IllegalArgumentException(
+						"Read legacy messages with ArgiJacksonStateSerializer before conversion");
+			}
 		}
-		else if (textObj != null) {
-			content = textObj.toString();
-		}
-
-		if (!StringUtils.hasLength(content)) {
+		ChatRole role = ChatRole
+			.valueOf(map.get("role") == null ? "USER" : map.get("role").toString().toUpperCase(Locale.ROOT));
+		Object content = map.get("content") != null ? map.get("content") : map.get("text");
+		if (content == null && role != ChatRole.TOOL && !map.containsKey("toolCalls")) {
 			return null;
 		}
-
-		String role = roleObj != null ? roleObj.toString().toLowerCase() : "user";
-
-		switch (role) {
-			case "system":
-				return ChatMessage.system(content);
-			case "assistant":
-				return ChatMessage.assistant(content);
-			case "user":
-			default:
-				return ChatMessage.user(content);
+		var builder = ChatMessage.builder(role);
+		if (content instanceof String text) {
+			builder.text(text);
 		}
+		else if (content instanceof List<?> parts) {
+			builder.content(parts.stream().map(part -> objectMapper.convertValue(part, ContentPart.class)).toList());
+		}
+		else if (content != null) {
+			throw new IllegalArgumentException("Message content must be text or a list of content parts");
+		}
+		if (map.get("toolCalls") != null) {
+			builder.toolCalls(List.of(objectMapper.convertValue(map.get("toolCalls"), ToolCall[].class)));
+		}
+		if (map.get("metadata") != null) {
+			if (!(map.get("metadata") instanceof Map<?, ?> properties)
+					|| properties.keySet().stream().anyMatch(key -> !(key instanceof String))) {
+				throw new IllegalArgumentException("Message metadata must be an object with string keys");
+			}
+			@SuppressWarnings("unchecked")
+			Map<String, Object> metadata = (Map<String, Object>) map.get("metadata");
+			builder.metadata(metadata);
+		}
+		if (role == ChatRole.TOOL) {
+			builder.toolResult((String) map.get("toolCallId"), (String) map.get("toolName"));
+		}
+		return builder.build();
 	}
 
 	/**
@@ -143,31 +162,7 @@ public class Messageutils {
 			return null;
 		}
 
-		JsonNode roleNode = jsonNode.get("role");
-		JsonNode textNode = jsonNode.get("text");
-		JsonNode contentNode = jsonNode.get("content");
-
-		// Prioritize content, then text
-		String content = null;
-		if (contentNode != null && contentNode.isTextual()) {
-			content = contentNode.asText();
-		}
-		else if (textNode != null && textNode.isTextual()) {
-			content = textNode.asText();
-		}
-
-		if (!StringUtils.hasLength(content)) {
-			return null;
-		}
-
-		String role = roleNode != null && roleNode.isTextual() ? roleNode.asText().toLowerCase() : "user";
-
-		return switch (role) {
-			case "system" -> ChatMessage.system(content);
-			case "assistant" -> ChatMessage.assistant(content);
-			case "user" -> ChatMessage.user(content);
-			default -> ChatMessage.user(content);
-		};
+		return convertMapToMessage(objectMapper.convertValue(jsonNode, Map.class));
 	}
 
 }

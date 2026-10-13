@@ -15,12 +15,6 @@
 # The neutral API directly replaces the Spring AI API; no legacy compatibility gate.
 replacement_policy: breaking
 api_consumer: tools/compatibility/neutral-api-consumer
-extensions_repository: agentic-ai-java/argi-extensions
-extensions_refs:
-  - ec023a24910a0a30c0e3e1c810e4c3ac2ef0dc40
-  - ed07835729405e7c8b97772d5b478d63ac1f9760
-extensions_checkout_path: .ci/argi-extensions
-extensions_maven_repo_override: EXTENSIONS_COMPAT_MAVEN_REPO
 validation_gates:
   - api-contract-check
   - sdk-boundaries-check

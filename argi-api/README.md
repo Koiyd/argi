@@ -299,3 +299,123 @@ The source baseline is Google's `google/adk-java` tag `v1.11.0`, specifically
 Capability, caller-blocking, and subscription-cancellation behavior is covered by
 `GoogleAdkChatClientAdapterTests` and
 `GoogleAdkChatClientAutoConfigurationTests`.
+
+
+## Checkpoint Upgrade and Rollback
+
+The RC2 work keeps the development version `2.1.0-RC2-SNAPSHOT`. It is a breaking
+pre-release, not a patch-compatible upgrade from RC1. Existing applications must
+migrate before adopting it; the final stable release version is not decided here.
+
+`ArgiJacksonStateSerializer` recognizes the historical Spring AI JSON `@class`
+names and `@type` markers for system, user, assistant, DeepSeek/ZhiPu reasoning,
+and grouped tool-response messages. The same identifiers in `@typeHint` are also
+recognized. Conversion needs no provider SDK on the classpath. It preserves roles,
+text, metadata, tool-call IDs, names, argument JSON and response order. A grouped
+tool response becomes one neutral TOOL message per response. Subsequent writes
+use `ARGI_*` records. The SDK boundary gate permits these exact historical wire
+literals only in the migration reader, not SDK imports, reflection or JVM types.
+
+Legacy binary checkpoints, templated instruction messages, nonempty legacy media,
+unknown SDK types and legacy StreamingOutput records are **not automatically
+compatible**. They fail explicitly; they must not become user messages or disappear.
+Template content must be resolved with the previous runtime. There is no bundled
+one-command binary export tool: use the old runtime and an application-specific
+export that emits the supported historical JSON layout or neutral messages.
+Do not pass legacy maps directly to `Messageutils`; deserialize them first.
+
+Before deployment:
+
+1. Back up the checkpoint store and test restoring that backup with the old runtime.
+2. Drain in-flight streams and pending tool executions. Resolve/export unsupported
+   records with the old runtime while it still has the required classes.
+3. On a copy of production data, read JSON with the new serializer and verify
+   message counts, roles, tool-call/result pairing, argument JSON and reasoning.
+4. Upgrade the application, persistence integration and Studio client together.
+   Do not run old and new writers against the same checkpoint store.
+5. Once neutral records have been written, **rollback requires restoring the
+   pre-upgrade backup** (or a separately verified reverse migration). The old
+   runtime cannot read new markers. Restoring the backup loses post-upgrade work;
+   coordinate application side effects separately to avoid duplicate tool execution.
+
+### Tool Snapshots and Operational Limits
+
+Dynamic tool bindings selected by hooks/interceptors remain in a process-local
+Caffeine cache: at most 4096 turns per compiled agent by default. A checkpoint
+persists identity and the complete selected definitions, not executable tools.
+After restart, agent rebuild or eviction, a pending dynamic turn fails closed.
+Drain pending HITL tool approvals before rolling restarts or regenerate the model
+turn and obtain approval again under application control. Sticky routing alone
+cannot survive process loss. Static selections can be restored only when the
+configured bindings match the persisted full name, description and schema;
+storing names only would weaken that check, so full definitions are retained.
+
+Each tool node owns a bounded daemon executor; idle core threads time out after
+30 seconds. Saturation rejects work immediately. Execution rejection follows the
+configured tool-error policy rather than silently queuing indefinitely. This is
+not a persistent job queue or a guarantee that pending work survives shutdown.
+
+`ToolChoice.NONE` guarantees no tool invocation, not identical schema visibility:
+Spring AI omits tool schemas, while other native APIs may still advertise them.
+ADK output parts not mapped by the declared profile fail explicitly rather than
+being skipped. Blank provider tool-call IDs still receive turn-local random IDs;
+applications must not assume identical synthesized IDs across model replays.
+Spring AI usage-only chunks must contain an empty generation list, not a
+generation with a null output. The native advisor chain aggregates before ARGI
+conversion and rejects malformed outputs. Such a stream fails with its original
+cause retained and does not emit successful completion events; the adapter does
+not bypass native advisors or invent assistant messages to repair invalid data.
+
+### Reasoning and Studio Events
+
+All adapters expose reasoning on assistant **message** metadata through
+`ChatMetadataKeys.REASONING` (`"reasoning"`). Native `reasoningContent` / response
+`thinking` are not portable contract keys. Reasoning delta events use the same
+metadata key. The runtime and checkpoint reader consume this neutral convention.
+Streaming text remains append-only: adapters and runtime use the shared
+`ChatStreams.unseenSuffix` invariant, and rewritten final text fails explicitly.
+An appended corrective delta cannot retract text already delivered to callers.
+
+Studio attaches turn usage only to the final event when splitting a multi-message
+output. Earlier split events carry unknown usage. Upgrade SSE consumers for
+`inputTokens`, `outputTokens`, `totalTokens` rather than the previous
+`promptTokens` / `completionTokens` fields; do not accumulate usage per message.
+AgentScope uses the native total-token getter, without assuming a provider total
+can always be reconstructed from input and output tokens.
+
+### Expiring Audit Suppressions
+
+Runtime auditing includes optional transitive dependencies; optional does not mean
+unreachable or safe in every consumer. HIGH, CRITICAL and UNKNOWN remain blocking.
+`tools/ci-config/runtime-dependency-suppressions.json` is empty by default. A waiver
+requires an exact advisory ID, Maven package and version, a substantive reason,
+a real GitHub tracking issue, and an ISO expiry date strictly after the audit date:
+
+```json
+{
+  "suppressions": [
+    {
+      "id": "<exact OSV advisory ID>",
+      "package": "<groupId>:<artifactId>",
+      "version": "<exact resolved version>",
+      "reason": "<verified exposure analysis and planned remediation>",
+      "issue": "https://github.com/<owner>/<repository>/issues/<number>",
+      "expires": "<YYYY-MM-DD>"
+    }
+  ]
+}
+```
+
+This is a template, not an active waiver. Replace every placeholder with verified
+values before use. Wildcards/ranges, duplicate records, malformed entries and
+expired waivers fail the gate. Waived findings remain visible with their reason,
+issue and expiry; an advisory affecting another unsuppressed version still blocks.
+The scanner retries HTTP 429 once after 20 seconds, and server errors/timeouts
+once after 2 seconds, then fails closed. It has no report-only bypass.
+
+The agent framework uses JSON Schema Validator 3.x for its current neutral tool
+validation API. Studio pins 1.5.7 in test scope because its MCP fixture requires
+`SpecVersion.VersionFlag`, an incompatible older API. That test-only pin is not
+a runtime dependency or a recommendation for applications. Adapter SDK baselines
+remain module-specific and are not managed by `argi-bom`; align provider versions
+explicitly when an application adds its own SDK dependencies.

@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.graph;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import io.github.agentic.ai.api.chat.ChatMessage;
 import io.github.agentic.ai.api.chat.ToolCall;
 
@@ -65,9 +66,9 @@ class StreamingOutputNeutralTest {
 		assertEquals(usage, completed.tokenUsage());
 		assertEquals("", completed.text());
 		var delta = new StreamingOutput<>(new ChatEvent(ChatEvent.Type.TEXT_DELTA, "hello", null, null, null,
-				Map.of("reasoningContent", "thinking")), "node", new OverAllState());
+				Map.of(ChatMetadataKeys.REASONING, "thinking")), "node", new OverAllState());
 		assertEquals("hello", delta.text());
-		assertEquals("thinking", delta.messages().get(0).metadata().get("reasoningContent"));
+		assertEquals("thinking", delta.messages().get(0).metadata().get(ChatMetadataKeys.REASONING));
 		var usageOnly = new StreamingOutput<>(ChatEvent.usage(usage), "node", new OverAllState());
 		assertEquals(List.of(), usageOnly.messages());
 		assertEquals(usage, usageOnly.tokenUsage());

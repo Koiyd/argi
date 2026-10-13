@@ -57,6 +57,10 @@ public class StreamingOutputDeserializer extends StdDeserializer<StreamingOutput
 			throws IOException {
 		ObjectMapper objectMapper = (ObjectMapper) jsonParser.getCodec();
 		JsonNode node = jsonParser.getCodec().readTree(jsonParser);
+		if (!node.has("messages")) {
+			throw new IOException("Legacy StreamingOutput checkpoints are not supported. Drain or export "
+					+ "in-flight streaming records with the previous runtime before upgrading.");
+		}
 
 		String nodeName = node.has("node") && !node.get("node").isNull() ? node.get("node").asText() : null;
 		String agentName = node.has("agent") && !node.get("agent").isNull() ? node.get("agent").asText() : null;

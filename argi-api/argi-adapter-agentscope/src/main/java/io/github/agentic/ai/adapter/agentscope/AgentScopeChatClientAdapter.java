@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.adapter.agentscope;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -330,11 +331,10 @@ public final class AgentScopeChatClientAdapter implements ChatClient {
 				.map(tool -> new ToolCall(reportedToolIds.getOrDefault(tool.getId(), tool.getId()), tool.getName(),
 						encode(tool.getInput())))
 				.toList();
-			if (thinking.hasContent()) {
-				metadata.put("thinking", thinking.getAccumulated());
-			}
+			Map<String, Object> messageMetadata = thinking.hasContent()
+					? Map.of(ChatMetadataKeys.REASONING, thinking.getAccumulated()) : Map.of();
 			Usage tokens = usage == null ? Usage.unknown() : new Usage((long) usage.getInputTokens(),
-					(long) usage.getOutputTokens(), (long) usage.getInputTokens() + usage.getOutputTokens());
+					(long) usage.getOutputTokens(), (long) usage.getTotalTokens());
 			FinishReason finish = finishReason == null ? null : switch (finishReason.toLowerCase(Locale.ROOT)) {
 				case "stop", "end_turn" -> FinishReason.STOP;
 				case "length", "max_tokens" -> FinishReason.LENGTH;
@@ -342,7 +342,8 @@ public final class AgentScopeChatClientAdapter implements ChatClient {
 				case "content_filter" -> FinishReason.CONTENT_FILTER;
 				default -> FinishReason.OTHER;
 			};
-			return new ChatResponse(id, modelName, List.of(ChatMessage.assistant(text.getAccumulated(), calls)), calls,
+			return new ChatResponse(id, modelName,
+					List.of(ChatMessage.assistant(text.getAccumulated(), calls).withMetadata(messageMetadata)), calls,
 					finish, tokens, metadata);
 		}
 

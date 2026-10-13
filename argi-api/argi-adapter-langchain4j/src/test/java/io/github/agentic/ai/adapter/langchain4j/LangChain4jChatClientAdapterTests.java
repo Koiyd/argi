@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.adapter.langchain4j;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
@@ -185,12 +186,34 @@ class LangChain4jChatClientAdapterTests {
 						ToolChoice.none(), ResponseFormat.jsonSchema("answer", "{\"type\":\"object\"}"), null),
 				null);
 		var response = new LangChain4jChatClientAdapter(model).callBlocking(request);
-		assertEquals("reasoning", response.metadata().get("thinking"));
+		assertEquals("reasoning", response.messages().get(0).metadata().get(ChatMetadataKeys.REASONING));
 		assertEquals("abc", response.messages().get(0).metadata().get("trace"));
 		assertTrue(!response.toolCalls().get(0).id().isBlank());
 		assertEquals(io.github.agentic.ai.api.chat.FinishReason.TOOL_CALLS, response.finishReason());
 		assertNotNull(model.request.responseFormat().jsonSchema());
 		assertEquals(3, model.request.messages().size());
+	}
+
+	@Test
+	void returnsTheSameMessageLevelReasoningForCallAndStream() {
+		StubModel model = new StubModel();
+		var nativeResponse = dev.langchain4j.model.chat.response.ChatResponse.builder()
+			.aiMessage(
+					AiMessage.builder().text("answer").thinking("reasoning").attributes(Map.of("trace", "abc")).build())
+			.build();
+		model.future = CompletableFuture.completedFuture(nativeResponse);
+		StubStream stream = new StubStream();
+		stream.events = Flux.just(new PartialResponse("ans"), new CompleteResponse(nativeResponse));
+		var adapter = new LangChain4jChatClientAdapter(model, stream);
+		var response = adapter.callBlocking(REQUEST);
+		var events = JdkFlowAdapter.flowPublisherToFlux(adapter.stream(REQUEST))
+			.collectList()
+			.block(Duration.ofSeconds(5));
+		assertNotNull(events);
+		assertEquals(response, events.get(events.size() - 1).response());
+		assertEquals(Map.of(ChatMetadataKeys.REASONING, "reasoning", "trace", "abc"),
+				response.messages().get(0).metadata());
+		assertTrue(!response.metadata().containsKey("thinking"));
 	}
 
 	@Test

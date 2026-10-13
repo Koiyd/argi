@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.adapter.springai;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import io.github.agentic.ai.api.chat.ChatEvent;
 import io.github.agentic.ai.api.chat.ChatMessage;
 import io.github.agentic.ai.api.chat.ChatRequest;
@@ -26,6 +27,7 @@ import io.github.agentic.ai.api.chat.ResponseFormat;
 import io.github.agentic.ai.api.chat.ToolChoice;
 import io.github.agentic.ai.api.chat.ToolDefinition;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -125,8 +127,45 @@ class SpringAiChatClientAdapterTests {
 		assertNotNull(events);
 		assertEquals(ChatEvent.Type.TEXT_DELTA, events.get(0).type());
 		assertEquals("", events.get(0).text());
-		assertEquals("thinking", events.get(0).metadata().get("reasoningContent"));
+		assertEquals("thinking", events.get(0).metadata().get(ChatMetadataKeys.REASONING));
 		assertEquals("answer", events.get(events.size() - 1).response().text());
+		assertEquals("thinking",
+				events.get(events.size() - 1).response().messages().get(0).metadata().get(ChatMetadataKeys.REASONING));
+	}
+
+	@Test
+	void rejectsNullGenerationOutputsWithoutSuccessfulCompletion() {
+		StubModel model = new StubModel();
+		var emptyOutput = new ChatResponse(List.of(new Generation(null)),
+				ChatResponseMetadata.builder().usage(new DefaultUsage(10, 5, 15)).build());
+		model.chunks = Flux.just(emptyOutput, textResponse("answer"), emptyOutput);
+		var adapter = new SpringAiChatClientAdapter(model);
+		List<ChatEvent> events = new ArrayList<>();
+		var failure = assertThrows(IllegalStateException.class,
+				() -> JdkFlowAdapter.flowPublisherToFlux(adapter.stream(REQUEST))
+					.doOnNext(events::add)
+					.blockLast(Duration.ofSeconds(5)));
+		assertTrue(failure.getMessage().contains("Usage-only chunks must use an empty generation list"));
+		assertTrue(failure.getCause() instanceof NullPointerException);
+		assertTrue(events.stream()
+			.noneMatch(event -> event.type() == ChatEvent.Type.RESPONSE || event.type() == ChatEvent.Type.USAGE));
+		model.chunks = Flux.just(emptyOutput);
+		assertThrows(IllegalStateException.class,
+				() -> JdkFlowAdapter.flowPublisherToFlux(adapter.stream(REQUEST)).blockLast(Duration.ofSeconds(5)));
+	}
+
+	@Test
+	void normalizesNativeReasoningOnCallWithoutChangingOtherMetadata() {
+		StubModel model = new StubModel();
+		model.response = new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+			.content("answer")
+			.properties(Map.of("reasoningContent", "reasoning", "trace", "abc"))
+			.build())));
+		var response = new SpringAiChatClientAdapter(model).callBlocking(REQUEST);
+		assertEquals("reasoning", response.messages().get(0).metadata().get(ChatMetadataKeys.REASONING));
+		assertEquals("abc", response.messages().get(0).metadata().get("trace"));
+		assertTrue(!response.messages().get(0).metadata().containsKey("reasoningContent"));
+		assertTrue(response.metadata().isEmpty());
 	}
 
 	@Test

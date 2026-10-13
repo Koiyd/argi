@@ -48,6 +48,22 @@ SDK_GROUPS = (
     "com.google.genai", "io.agentscope",
 )
 
+# Historical wire names are not provider dependencies. Only this JSON migration
+# reader may contain these exact literals; imports and JVM type symbols still fail.
+LEGACY_READER = ('argi-graph-core/src/main/java/io/github/agentic/ai/graph/serializer/'
+                 'plain_text/jackson/LegacyChatRecordSupport.java')
+LEGACY_CLASS = ('argi-graph-core/target/classes/io/github/agentic/ai/graph/serializer/'
+                'plain_text/jackson/LegacyChatRecordSupport.class')
+LEGACY_WIRE_NAMES = (
+    'org.springframework.ai.',
+    'org.springframework.ai.chat.messages.SystemMessage',
+    'org.springframework.ai.chat.messages.UserMessage',
+    'org.springframework.ai.chat.messages.AssistantMessage',
+    'org.springframework.ai.chat.messages.ToolResponseMessage',
+    'org.springframework.ai.deepseek.DeepSeekAssistantMessage',
+    'org.springframework.ai.zhipuai.ZhiPuAiAssistantMessage',
+)
+
 
 def prohibited(group, artifact):
     return any(group == prefix or group.startswith(prefix + ".") for prefix in SDK_GROUPS) or (
@@ -104,6 +120,11 @@ def check(root, modules=NEUTRAL_MODULES):
         for source in (directory / "src/main").rglob("*.java"):
             sources += 1
             for number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+                if source.relative_to(root).as_posix() == LEGACY_READER:
+                    if re.search(r'Class\s*\.\s*forName|loadClass\s*\(', line):
+                        errors.append(f"{LEGACY_READER}:{number}: migration reader must not load SDK classes")
+                    for name in LEGACY_WIRE_NAMES:
+                        line = line.replace('"' + name + '"', '"legacy-wire-name"')
                 if pattern.search(line):
                     errors.append(f"{source.relative_to(root)}:{number}: provider SDK reference")
         compiled = list((directory / "target/classes").rglob("*.class"))
@@ -112,6 +133,13 @@ def check(root, modules=NEUTRAL_MODULES):
         for bytecode in compiled:
             classes += 1
             data = bytecode.read_bytes()
+            if bytecode.relative_to(root).as_posix() == LEGACY_CLASS:
+                for name in LEGACY_WIRE_NAMES:
+                    encoded = name.encode()
+                    # Remove complete CONSTANT_Utf8 entries only, never substrings
+                    # in a signature or slash-delimited CONSTANT_Class name.
+                    entry = b'\x01' + len(encoded).to_bytes(2, 'big') + encoded
+                    data = data.replace(entry, b'legacy-wire-name')
             # JVM constant-pool names include signatures, annotations and method bodies.
             for prefix in SDK_PACKAGES:
                 if prefix.encode() in data or prefix.replace(".", "/").encode() in data:

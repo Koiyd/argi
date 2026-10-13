@@ -170,7 +170,7 @@ class StudioNeutralStreamingTest {
 			var event = data.get(index);
 			assertEquals("tools", event.path("node").asText());
 			assertEquals("assistant", event.path("agent").asText());
-			assertEquals(7, event.path("tokenUsage").path("totalTokens").asInt());
+			assertEquals(index == 2 ? 7 : 0, event.path("tokenUsage").path("totalTokens").asInt());
 			assertEquals("tool", event.path("message").path("messageType").asText());
 			var results = event.path("message").path("responses");
 			assertEquals(1, results.size());
@@ -182,6 +182,8 @@ class StudioNeutralStreamingTest {
 				assertEquals("checkpoint", event.path("state").path("marker").asText());
 			}
 		}
+		assertEquals(7, data.get(1).path("tokenUsage").path("totalTokens").asInt()
+				+ data.get(2).path("tokenUsage").path("totalTokens").asInt());
 		assertEquals("answer", data.get(3).path("chunk").asText());
 		assertEquals("assistant", data.get(3).path("message").path("messageType").asText());
 	}

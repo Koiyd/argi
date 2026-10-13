@@ -18,6 +18,8 @@ package io.github.agentic.ai.agent.studio.controller;
 import io.github.agentic.ai.graph.NodeOutput;
 import io.github.agentic.ai.graph.streaming.StreamingOutput;
 import java.util.List;
+import java.util.stream.IntStream;
+import io.github.agentic.ai.api.chat.Usage;
 
 /** Projects multi-message turns onto the Studio's single-message SSE envelope. */
 final class StreamingMessages {
@@ -29,10 +31,12 @@ final class StreamingMessages {
 		if (!(output instanceof StreamingOutput<?> streamed) || streamed.messages().size() < 2) {
 			return List.of(output);
 		}
-		return streamed.messages().stream().<NodeOutput>map(message -> {
+		return IntStream.range(0, streamed.messages().size()).<NodeOutput>mapToObj(index -> {
+			var message = streamed.messages().get(index);
 			StreamingOutput<?> item = new StreamingOutput<>(message, streamed.getOriginData(), output.node(),
 					output.agent(), output.state(), streamed.getOutputType());
-			item.setTokenUsage(output.tokenUsage());
+			// Usage belongs to the turn, not each projected message.
+			item.setTokenUsage(index == streamed.messages().size() - 1 ? output.tokenUsage() : Usage.unknown());
 			item.setSubGraph(output.isSubGraph());
 			return item;
 		}).toList();

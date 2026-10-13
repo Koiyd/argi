@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.graph.agent.node;
 
+import io.github.agentic.ai.api.chat.ChatStreams;
 import io.github.agentic.ai.api.chat.ChatClient;
 import io.github.agentic.ai.api.chat.ChatEvent;
 import io.github.agentic.ai.api.chat.ChatMessage;
@@ -71,11 +72,7 @@ final class AgentChatProtocol {
 					}
 					case RESPONSE -> {
 						var aggregate = Objects.requireNonNull(event.response(), "Final response must not be null");
-						if (!aggregate.text().startsWith(emitted.toString())) {
-							sink.error(new IllegalStateException("Final response text does not match streamed deltas"));
-							return;
-						}
-						sink.next(response(aggregate, aggregate.text().substring(emitted.length())));
+						sink.next(response(aggregate, ChatStreams.unseenSuffix(aggregate.text(), emitted)));
 						finished.set(true);
 					}
 					case TOOL_CALL, USAGE -> {

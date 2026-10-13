@@ -130,6 +130,8 @@ public class AgentToolNode implements NodeActionWithConfig {
 		this.parallelToolExecution = builder.parallelToolExecution;
 		this.maxParallelTools = builder.maxParallelTools;
 		// A separate bounded pool prevents nested waits from starving the graph executor.
+		// Daemon workers retire after 30 idle seconds. Saturation rejects immediately;
+		// the rejection follows the configured tool-error policy rather than blocking.
 		this.neutralInvocationExecutor = new ThreadPoolExecutor(maxParallelTools, maxParallelTools, 30,
 				TimeUnit.SECONDS, new ArrayBlockingQueue<>(maxParallelTools), task -> {
 					Thread thread = new Thread(task, "argi-tool-invocation");
@@ -193,7 +195,7 @@ public class AgentToolNode implements NodeActionWithConfig {
 			return handlePartialToolResponses(messages, state, config);
 		}
 		else {
-			throw new IllegalStateException("Last message is neither an ChatMessage nor a ToolResponseMessage");
+			throw new IllegalStateException("Last message must have the ASSISTANT or TOOL role");
 		}
 	}
 
@@ -457,8 +459,8 @@ public class AgentToolNode implements NodeActionWithConfig {
 	}
 
 	/**
-	 * Handle partial tool responses (ToolResponseMessage branch). Supports both parallel
-	 * and sequential execution of remaining tools.
+	 * Handle partial tool responses (TOOL message branch). Supports both parallel and
+	 * sequential execution of remaining tools.
 	 */
 	private Map<String, Object> handlePartialToolResponses(List<ChatMessage> messages, OverAllState state,
 			RunnableConfig config) {

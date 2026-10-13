@@ -15,6 +15,8 @@
  */
 package io.github.agentic.ai.adapter.langchain4j;
 
+import io.github.agentic.ai.api.chat.ChatStreams;
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -127,11 +129,7 @@ public final class LangChain4jChatClientAdapter implements ChatClient {
 						return Flux
 							.error(new IllegalStateException("LangChain4j stream ended without a final response"));
 					}
-					if (!response.text().startsWith(text.toString())) {
-						return Flux
-							.error(new IllegalStateException("LangChain4j final text does not match streamed deltas"));
-					}
-					String suffix = response.text().substring(text.length());
+					String suffix = ChatStreams.unseenSuffix(response.text(), text);
 					Flux<ChatEvent> remainingText = suffix.isEmpty() ? Flux.empty()
 							: Flux.just(ChatEvent.textDelta(suffix));
 					return remainingText.concatWith(Flux.fromIterable(response.toolCalls()).map(ChatEvent::toolCall))
@@ -250,12 +248,14 @@ public final class LangChain4jChatClientAdapter implements ChatClient {
 			case CONTENT_FILTER -> FinishReason.CONTENT_FILTER;
 			default -> FinishReason.OTHER;
 		};
-		Map<String, Object> metadata = output.thinking() == null ? Map.of() : Map.of("thinking", output.thinking());
+		Map<String, Object> metadata = new java.util.HashMap<>(output.attributes());
+		if (output.thinking() != null) {
+			metadata.put(ChatMetadataKeys.REASONING, output.thinking());
+		}
 		ChatMessage message = ChatMessage.assistant(output.text(), calls);
-		ChatMessage assistant = new ChatMessage(message.role(), message.content(), calls, null, null,
-				output.attributes());
+		ChatMessage assistant = new ChatMessage(message.role(), message.content(), calls, null, null, metadata);
 		return new ChatResponse(response.id(), response.modelName(), List.of(assistant), calls, finish, usage,
-				metadata);
+				Map.of());
 	}
 
 	private static Long toLong(Integer value) {

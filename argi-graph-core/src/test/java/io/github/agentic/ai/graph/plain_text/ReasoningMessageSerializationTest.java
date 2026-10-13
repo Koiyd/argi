@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.graph.plain_text;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import io.github.agentic.ai.api.chat.ChatMessage;
 import io.github.agentic.ai.api.chat.ToolCall;
 import io.github.agentic.ai.graph.OverAllState;
@@ -59,7 +60,7 @@ class ReasoningMessageSerializationTest {
 			List<ToolCall> toolCalls) {
 		Map<String, Object> values = new HashMap<>(metadata);
 		if (reasoningContent != null)
-			values.put("reasoningContent", reasoningContent);
+			values.put(ChatMetadataKeys.REASONING, reasoningContent);
 		return ChatMessage.assistant(text, toolCalls).withMetadata(values);
 	}
 
@@ -116,7 +117,8 @@ class ReasoningMessageSerializationTest {
 		assertTrue(deserializedMessage1 instanceof ChatMessage);
 		ChatMessage msg1 = (ChatMessage) deserializedMessage1;
 		assertEquals("Let me calculate that for you.", msg1.text());
-		assertEquals("I need to use the calculator tool to add 1 and 2.", msg1.metadata().get("reasoningContent"));
+		assertEquals("I need to use the calculator tool to add 1 and 2.",
+				msg1.metadata().get(ChatMetadataKeys.REASONING));
 
 		// Verify metadata - messageType may be automatically added during deserialization
 		Map<String, Object> deserializedMetadata1 = msg1.metadata();
@@ -133,7 +135,8 @@ class ReasoningMessageSerializationTest {
 		assertTrue(deserializedMessage2 instanceof ChatMessage);
 		ChatMessage msg2 = (ChatMessage) deserializedMessage2;
 		assertEquals("The weather in Beijing is sunny.", msg2.text());
-		assertEquals("I used the weather tool to get the current weather.", msg2.metadata().get("reasoningContent"));
+		assertEquals("I used the weather tool to get the current weather.",
+				msg2.metadata().get(ChatMetadataKeys.REASONING));
 
 		// Verify metadata - messageType may be automatically added during deserialization
 		Map<String, Object> deserializedMetadata2 = msg2.metadata();
@@ -221,7 +224,7 @@ class ReasoningMessageSerializationTest {
 		assertTrue(deserializedMessage instanceof ChatMessage);
 		ChatMessage msg = (ChatMessage) deserializedMessage;
 		assertEquals("Top level message", msg.text());
-		assertEquals("Reasoning content", msg.metadata().get("reasoningContent"));
+		assertEquals("Reasoning content", msg.metadata().get(ChatMetadataKeys.REASONING));
 		assertEquals(1, msg.toolCalls().size());
 	}
 
@@ -259,7 +262,7 @@ class ReasoningMessageSerializationTest {
 		assertTrue(deserializedMessage instanceof ChatMessage);
 		ChatMessage msg = (ChatMessage) deserializedMessage;
 		assertEquals("Message without reasoning", msg.text());
-		assertEquals(null, msg.metadata().get("reasoningContent"));
+		assertEquals(null, msg.metadata().get(ChatMetadataKeys.REASONING));
 	}
 
 }

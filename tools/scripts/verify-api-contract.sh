@@ -23,7 +23,15 @@ readonly CONTRACT_MODULES=':argi-agent-framework,:argi-studio,:argi-starter-grap
 readonly FIXTURE_POM="${REPO_ROOT}/tools/compatibility/neutral-api-consumer/pom.xml"
 
 # Install current artifacts, then compile a separate consumer with no provider SDK.
-"${REPO_ROOT}/mvnw" -B -Dmaven.test.skip=true -pl "${CONTRACT_MODULES}" -am install
+if [[ $# -gt 1 ]]; then
+    echo "Usage: $0 [--skip-install]" >&2
+    exit 2
+fi
+case "${1:-}" in
+    '') "${REPO_ROOT}/mvnw" -B -Dmaven.test.skip=true -pl "${CONTRACT_MODULES}" -am install ;;
+    --skip-install) ;; # CI has already installed and tested this checkout's artifacts.
+    *) echo "Usage: $0 [--skip-install]" >&2; exit 2 ;;
+esac
 "${REPO_ROOT}/mvnw" -B -f "${FIXTURE_POM}" clean compile \
     org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree \
     -Dscope=runtime -DoutputType=json -DoutputFile=target/runtime-dependencies.json

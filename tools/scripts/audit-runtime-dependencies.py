@@ -16,7 +16,9 @@
 """Audit Maven runtime dependency trees using public coordinates and OSV."""
 
 import argparse
+import datetime
 import json
+import re
 import socket
 import sys
 import time
@@ -28,6 +30,35 @@ from pathlib import Path
 
 OSV_API = "https://api.osv.dev/v1"
 NS = {"m": "http://maven.apache.org/POM/4.0.0"}
+SUPPRESSIONS = "tools/ci-config/runtime-dependency-suppressions.json"
+
+
+def load_suppressions(path, today=None):
+    """Require a reviewed, exact package/version waiver with a finite lifetime."""
+    today = today or datetime.date.today()
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or set(document) != {"suppressions"} or not isinstance(
+            document["suppressions"], list):
+        raise ValueError("Suppression file must contain only a suppressions array")
+    entries = {}
+    fields = {"id", "package", "version", "reason", "issue", "expires"}
+    for entry in document["suppressions"]:
+        if not isinstance(entry, dict) or set(entry) != fields or any(
+                not isinstance(value, str) or not value.strip() for value in entry.values()):
+            raise ValueError("Each suppression requires id, package, version, reason, issue and expires")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+", entry["package"]) or any(
+                char in entry["version"] for char in "*[],() "):
+            raise ValueError("Suppression package and version must be exact Maven coordinates")
+        if not re.fullmatch(r"https://github\.com/[^/\s]+/[^/\s]+/issues/[1-9][0-9]*", entry["issue"]):
+            raise ValueError("Suppression issue must link to a GitHub tracking issue")
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["expires"]) or datetime.date.fromisoformat(
+                entry["expires"]) <= today:
+            raise ValueError(f"Suppression is expired or has an invalid expiry: {entry['id']}")
+        key = (entry["id"], entry["package"], entry["version"])
+        if key in entries:
+            raise ValueError(f"Duplicate suppression: {key}")
+        entries[key] = entry
+    return entries
 
 
 def request_json(path, payload=None):
@@ -92,7 +123,9 @@ def query_advisories(packages):
     return matches
 
 
-def audit(root, tree_name):
+def audit(root, tree_name, suppression_path=None):
+    # Load policy before contacting OSV; an invalid waiver must never bypass the gate.
+    suppressions = load_suppressions(suppression_path or root / SUPPRESSIONS)
     modules, packages = collect_packages(root, tree_name)
     matches = query_advisories(packages)
     print(f"Modules: {len(modules)}; external runtime package versions: {len(packages)}")
@@ -102,12 +135,21 @@ def audit(root, tree_name):
         advisory = request_json("/vulns/" + identifier)
         if advisory.get("withdrawn"):
             continue
-        severity = advisory.get("database_specific", {}).get("severity", "UNKNOWN").upper()
+        database_specific = advisory.get("database_specific")
+        raw_severity = database_specific.get("severity") if isinstance(database_specific, dict) else None
+        severity = raw_severity.strip().upper() if isinstance(raw_severity, str) else "UNKNOWN"
+        if severity not in {"LOW", "MODERATE", "MEDIUM", "HIGH", "CRITICAL"}:
+            severity = "UNKNOWN"
         active += 1
-        blockers += severity in {"HIGH", "CRITICAL", "UNKNOWN"}
+        waived = [suppressions[(identifier, name, version)] for name, version in sorted(coordinates)
+                  if (identifier, name, version) in suppressions]
+        unsuppressed = [(name, version) for name, version in sorted(coordinates)
+                        if (identifier, name, version) not in suppressions]
+        blockers += bool(unsuppressed) and severity in {"HIGH", "CRITICAL", "UNKNOWN"}
         record = {"id": identifier, "severity": severity,
                   "summary": advisory.get("summary", ""),
-                  "packages": sorted(coordinates),
+                  "packages": sorted(coordinates), "unsuppressed_packages": unsuppressed,
+                  "suppressions": waived,
                   "modules": sorted(set().union(*(packages[key] for key in coordinates)))}
         print(json.dumps(record, sort_keys=True))
     print(f"Active advisories: {active}; high/critical/unknown blockers: {blockers}")
@@ -118,11 +160,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--tree-name", default="runtime-dependencies.json")
+    parser.add_argument("--suppressions", type=Path, help="Reviewed expiry-dated suppression file")
     arguments = parser.parse_args(argv)
     if Path(arguments.tree_name).name != arguments.tree_name:
         parser.error("--tree-name must be a file name")
     try:
-        return audit(arguments.root.resolve(), arguments.tree_name)
+        return audit(arguments.root.resolve(), arguments.tree_name, arguments.suppressions)
     except (OSError, ValueError, KeyError, ET.ParseError) as error:
         print(f"Runtime dependency audit failed: {error}", file=sys.stderr)
         return 2

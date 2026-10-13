@@ -83,6 +83,38 @@ class SdkBoundariesTest(unittest.TestCase):
             b"io/github/agentic/ai/adapter/springai/SpringAiChatClient")
         self.assertEqual(1, self.result())
 
+    def legacy_fixture(self, text, bytecode=b"neutral"):
+        source = self.root / AUDIT.LEGACY_READER
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(text, encoding="utf-8")
+        compiled = self.root / AUDIT.LEGACY_CLASS
+        compiled.parent.mkdir(parents=True, exist_ok=True)
+        compiled.write_bytes(bytecode)
+
+    def test_exact_migration_wire_literals_are_allowed_only_in_reader(self):
+        name = AUDIT.LEGACY_WIRE_NAMES[1]
+        encoded = name.encode()
+        self.legacy_fixture(f'class LegacyChatRecordSupport {{ String wire = "{name}"; }}',
+                            b'\x01' + len(encoded).to_bytes(2, 'big') + encoded)
+        self.assertEqual(0, self.result())
+        (self.directory / "src/main/java/Example.java").write_text(f'class Example {{ String wire = "{name}"; }}')
+        self.assertEqual(1, self.result())
+
+    def test_migration_exemption_does_not_allow_imports_reflection_or_new_wire_types(self):
+        name = AUDIT.LEGACY_WIRE_NAMES[1]
+        for text in [f'import {name};', f'Class.forName("{name}");',
+                     'String unsupported = "org.springframework.ai.chat.messages.NewMessage";']:
+            with self.subTest(text=text):
+                self.legacy_fixture(text)
+                self.assertEqual(1, self.result())
+
+    def test_migration_exemption_does_not_allow_type_symbols_or_partial_utf8_matches(self):
+        name = AUDIT.LEGACY_WIRE_NAMES[1]
+        for value in [name.replace('.', '/').encode(), (name + "$Builder").encode()]:
+            self.legacy_fixture('class LegacyChatRecordSupport {}',
+                                b'\x01' + len(value).to_bytes(2, 'big') + value)
+            self.assertEqual(1, self.result())
+
     def test_transitive_dependency_fails(self):
         (self.directory / "target/runtime-dependencies.json").write_text(json.dumps({
             "artifactId": "module-0", "children": [{"groupId": "example", "artifactId": "bridge",

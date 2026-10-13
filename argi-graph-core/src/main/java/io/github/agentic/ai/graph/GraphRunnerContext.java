@@ -15,6 +15,7 @@
  */
 package io.github.agentic.ai.graph;
 
+import io.github.agentic.ai.api.chat.ChatMetadataKeys;
 import io.github.agentic.ai.api.chat.ChatMessage;
 import io.github.agentic.ai.api.chat.ChatRole;
 
@@ -400,7 +401,7 @@ public class GraphRunnerContext {
 			boolean streaming) {
 		OutputType outputType = OutputType.from(streaming, nodeId);
 		// Reasoning models stream the thinking phase as blank-content chunks carrying
-		// reasoningContent; stamp an explicit marker so consumers can route thinking vs
+		// reasoning metadata; stamp an explicit marker so consumers can route thinking vs
 		// final-answer chunks (issue #34).
 		if (outputType == OutputType.AGENT_MODEL_STREAMING) {
 			message = stampReasoningMarker(message);
@@ -421,10 +422,10 @@ public class GraphRunnerContext {
 	public static final String IS_REASONING_METADATA_KEY = "isReasoning";
 
 	/**
-	 * Metadata key carrying the reasoning (thinking) text of a chunk, normalized from
-	 * either the message metadata or a DeepSeek assistant message (optional dependency).
+	 * Metadata key carrying the reasoning (thinking) text of a chunk, normalized from the
+	 * neutral assistant message metadata.
 	 */
-	public static final String REASONING_CONTENT_METADATA_KEY = "reasoningContent";
+	public static final String REASONING_CONTENT_METADATA_KEY = ChatMetadataKeys.REASONING;
 
 	private ChatMessage stampReasoningMarker(ChatMessage message) {
 		if (message == null || message.role() != ChatRole.ASSISTANT) {
