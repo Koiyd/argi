@@ -66,6 +66,124 @@ queue; applications must coordinate these with running executions. A queued call
 waiting while its predecessor remains active, so apply an application timeout or cancel
 the subscription when that wait is no longer wanted.
 
+## Opt-in Run and Task Storage Contracts
+
+`io.github.agentic.ai.graph.execution.run` provides backend-neutral admission and
+atomic storage contracts for recoverable run/task **data**. It does not schedule a
+worker, replace `TaskRepository`/its local `Supplier` API, change a checkpoint saver,
+or enable distributed execution automatically. Existing APIs, defaults, checkpoint
+and Store formats, and `argi.*` configuration remain unchanged. No migration is
+required for existing applications.
+
+### Data and authentication boundary
+
+- `RunSpec` schema version 1 stores the graph id/version, run id, submission key,
+  canonical input hash, input data and a `TrustedExecutionContextReference`.
+  Registered graph/task identifiers resolve code at the application boundary;
+  they are not serialized closures. `TaskSpec` stores task id, parent run id,
+  registered task type/version, input and a parent or narrowed child context.
+- `RunNamespace` is a structured `(tenant authority/id, applicationId, sessionId)`
+  key. The run id is deliberately excluded: different runs of one session share
+  a reservation, physical owner and monotonically increasing fence.
+- Create a namespace/spec from a live `TrustedExecutionContext` at the application's
+  authentication boundary, then pass that context explicitly to `RunStore.submit`.
+  The context must exactly match the spec's reference. A decoded reference, model
+  argument, ordinary metadata or JSON namespace is **not** authentication.
+  Applications authorize session/application access, store reads and worker access;
+  workers re-resolve persisted identities before recovery and side effects.
+- Deadline (epoch milliseconds), budget limits and delegation permissions are
+  persisted in the context reference. Task identity, correlation, permissions,
+  deadline and budget cannot exceed the parent run. Deadline rounding is
+  conservative: admission uses the persisted millisecond deadline.
+  Model/tool deadline checks and consumption accounting belong to the runtime;
+  storing a budget is not evidence that it has been enforced.
+- `RunPayload` accepts only JSON object text, a data-schema type and a positive
+  payload version, never an arbitrary Java object. It canonicalizes nested object
+  keys while preserving array order. SHA-256 covers payload schema, type and JSON;
+  a forged input hash is rejected. Numbers follow Jackson's normalized JSON
+  representation, not cross-language semantic equality.
+  `RunSpecCodec`/task codecs reject unsupported envelope versions, duplicate keys,
+  missing/unknown fields, scalar coercion and trailing documents; they never enable
+  polymorphic Java typing. Application payload versions evolve separately from
+  envelope version 1. Applications must redact tokens, credentials and other
+  secrets before admission; a JSON data API cannot recognize arbitrary secrets.
+
+### Admission, ownership and atomic writes
+
+`submit` atomically deduplicates `(namespace, submissionKey)` and reserves the
+session for a new `PENDING` run. Same-key submissions with the same canonical input,
+graph/version and principal return the original snapshot, even with a different run
+id or after completion. The original deadline/budget/permissions are retained; a
+retry does not update constraints. Changed input/graph/principal conflicts. Different
+keys/runs conflict while a nonterminal run reserves the session. Reusing an existing
+run id for another key also conflicts. Failed admission leaves no record.
+
+The logical active-run reservation has **no lease TTL**. `WAITING` retains it.
+Physical `RunLease` ownership expires or can be released independently; neither
+action frees the logical session. Only the reserved run may acquire a namespace
+lease. Every acquisition increments a namespace fence, including after a terminal
+run and subsequent run. Renew/release cannot affect a newer owner/fence. The store's
+clock and stored expiry are authoritative, never a caller-supplied expiry claim.
+
+`RunCommit` requires the live namespace owner/fence and exact run revision. In one
+atomic boundary it validates and publishes run state, checkpoint, task states,
+journal and outbox. Revision starts at 0 and increments per committed write. Task
+updates have independent CAS revisions; `-1` creates a `PENDING` task at revision 0.
+Task specs are immutable and duplicate task updates in one command are rejected.
+A null checkpoint retains the previous checkpoint. Terminal commits require all
+tasks to be terminal and release reservation plus physical lease atomically.
+Invalid transitions, stale revisions/owners, invalid task data or append conflicts
+must leave **every** component unchanged. At/after a stored deadline, only
+`TIMED_OUT` or `CANCELLED` writes are accepted for that run/task, including a task
+whose narrower deadline expires while its parent run is still live.
+
+| Current state | Allowed next states |
+| --- | --- |
+| `PENDING` | `PENDING`, `RUNNING`, `CANCELLED`, `TIMED_OUT` |
+| `RUNNING` | `RUNNING`, `WAITING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `TIMED_OUT` |
+| `WAITING` | `WAITING`, `RUNNING`, `FAILED`, `CANCELLED`, `TIMED_OUT` |
+| Terminal | None, including same-state writes |
+
+`RunEntry` supplies versioned, append-only `MODEL_CALL`, `TASK_CALL`, `APPROVAL`
+and `EVENT` boundaries. An existing entry id with identical data is idempotent;
+different data conflicts. Outbox accepts `EVENT` only. Entries and checkpoints use
+independently versioned application payloads. An atomic outbox persists intent,
+not proof of delivery or exactly-once provider execution. Entries remain readable
+after completion; transport, delivery cursors, retries and consumer deduplication
+belong to an optional runtime/backend. No durability or delivery methods are empty
+default implementations.
+
+### Backend obligations and reference validation
+
+`RunStoreCapabilities.requireDurableMode()` is a fail-closed opt-in gate. Durable
+mode requires **all** of: restart persistence, atomic run/checkpoint/outbox writes,
+namespace fencing, session reservations, submission deduplication and revision CAS.
+Implementing `RunStore`, a lease alone, or a versioned checkpoint saver alone is
+insufficient. An adapter must honor its advertised capabilities; independent writes
+to a saver and an event store do not constitute an atomic commit.
+
+`MemoryRunStore` implements the contract with immutable snapshots and a shared
+monitor. Validation builds all replacement data before publishing it. It is a
+single-process, unbounded reference implementation, **not durable storage**:
+all guarantees require sharing one instance, all data is lost on restart, and its
+durable-mode gate always rejects. It neither provides cross-JVM coordination nor
+enables worker execution. Persistent adapters belong in Extensions; production
+activation remains subject to the existing P0 safety gates. This contract does not
+promise Redis HA RPO0, general exactly-once execution, MQ or node sharding.
+
+`RunStoreContractTest` is a reusable abstract reference suite for adapters (reuse
+the fixture source in backend suites; no test-fixture artifact is published). It
+checks deduplication, lifecycle, reservations independent of TTL, owner/fence
+takeover, task CAS, immutable reads, late-failure rollback, deadline boundaries and
+concurrent submission/owner/revision races. Backend tests must additionally prove
+real transaction rollback, restart persistence and independent-JVM takeover using
+the actual storage service. The in-memory suite is not evidence of those properties.
+
+```shell
+./mvnw -B -pl :argi-graph-core -am \
+  -Dtest=MemoryRunStoreTest,RunDataContractTest test
+```
+
 ## Interruption Support
 
 ARGI Graph supports interrupting workflow execution at specific points, enabling human-in-the-loop scenarios.

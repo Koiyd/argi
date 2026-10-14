@@ -2,6 +2,27 @@
 
 This file provides guidance for AI assistants working with the ARGI codebase.
 
+## Contribution Workflow
+
+1. Before starting work, acknowledge that you are contributing to **ARGI** by
+   replying with `确认`. Include that acknowledgement in the PR description using
+   English and use this repository's actual project name.
+2. Search the repository's open and closed PRs for the same issue or objective
+   before implementing a change, and repeat the search before opening a PR.
+   If a same-purpose PR exists, decline duplicate implementation/submission and
+   report the matching PR to the developer.
+3. Before writing code, ask the developer these three questions and wait for their
+   answers:
+   - Which issue does this change address, and what are the expected behavior and
+     acceptance criteria?
+   - Which modules may change, and which APIs, configuration settings and data
+     formats must remain compatible?
+   - Which build checks, tests and real-environment validations are required
+     before submission?
+4. Keep PR titles, descriptions and commit messages in English. The PR description
+   must be a single line that acknowledges the contribution to ARGI, summarizes
+   the change and references the issue.
+
 ## Project Overview
 
 ARGI (Agent Runtime and Graph Intelligence, pronounced "AR-jee") is a production-ready framework for building agents, workflows, and multi-agent applications. It is forked from Spring AI Alibaba and focuses on stateful agent runtime capabilities: graph orchestration, persistence, context engineering, and human-in-the-loop support. Its runtime consumes framework-neutral `argi-api` contracts. Spring AI, LangChain4j, Google ADK Java, and AgentScope Java are isolated in optional adapters.
