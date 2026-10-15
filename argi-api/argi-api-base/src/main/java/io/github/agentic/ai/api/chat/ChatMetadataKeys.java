@@ -21,6 +21,32 @@ public final class ChatMetadataKeys {
 	/** Reasoning text for an assistant turn; never included in visible response text. */
 	public static final String REASONING = "reasoning";
 
+	/**
+	 * Optional {@link ChatSourceKind} name describing where the message content came
+	 * from.
+	 */
+	public static final String SOURCE_KIND = "argi.sourceKind";
+
+	/**
+	 * Optional {@link ChatTrustLevel} name describing the authority of the message
+	 * content.
+	 */
+	public static final String TRUST_LEVEL = "argi.trustLevel";
+
+	/**
+	 * Optional list of attribution maps retained across summarization, compaction, and
+	 * recovery.
+	 */
+	public static final String PROVENANCE = "argi.provenance";
+
+	/**
+	 * Framework construction seal for trusted application instructions. Only
+	 * {@link MessageProvenance#appInstruction(ChatMessage)} sets this marker; forged
+	 * {@code APP_INSTRUCTION} tags deserialized from state without the seal are not
+	 * honored.
+	 */
+	public static final String FRAMEWORK_SEALED = "argi.frameworkSealed";
+
 	private ChatMetadataKeys() {
 	}
 
