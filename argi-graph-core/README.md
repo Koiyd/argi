@@ -59,6 +59,19 @@ saver instances can still run concurrently. An omitted `threadId` uses the share
 `$default` namespace; set explicit thread IDs to isolate conversations. Graphs configured
 with an empty `SaverConfig` keep their previous concurrent behavior.
 
+### Missing threadId semantics
+
+An omitted `threadId` is shared state, not a private bucket. Every caller without a
+`threadId` on the same saver instance reads and writes the same `$default` checkpoint
+history; when `app_name`/`user_id` metadata is present the bucket is scoped per
+app/user, but conversations of that identity without a threadId still share one
+history. This fallback is logged as a warning (once per JVM). For persistence-backed
+or multi-user deployments, enable the strict policy with the
+`argi.checkpoint.requireExplicitThreadId=true` system property or
+`CheckpointThreadIdPolicy.setRequireExplicitThreadId(true)`; checkpoint operations
+then fail fast with `IllegalArgumentException` until the caller supplies an explicit
+`threadId`.
+
 This is an in-process execution queue, not a distributed lock. Separate saver instances
 or application processes pointing at the same database need external coordination.
 Direct saver writes and explicit `CompiledGraph.updateState` calls are outside this
